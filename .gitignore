@@ -1,0 +1,48 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.Python
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Data folders (do NOT upload heavy raw data)
+pmdata/
+outputs/
+notebooks/outputs/
+__blobstorage__/
+
+# Azurite local storage files
+__azurite_db_blob__.json
+__azurite_db_blob_extent__.json
+
+# VSCode
+.vscode/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Others
+pip-wheel-metadata/
+*.swp
