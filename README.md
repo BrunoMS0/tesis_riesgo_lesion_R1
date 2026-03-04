@@ -128,18 +128,107 @@ ipykernel
 
 ---
 
-## Ejecución rápida del notebook principal
-1) Activar el entorno y seleccionar el kernel `tesis_riesgo_R1` en Jupyter.
-2) Abrir `notebooks/R1_Feature_Engineering.ipynb`.
-3) Ejecutar las celdas en orden (usa "Restart & Run All" si quieres una ejecución limpia).
+## Estructura del Proyecto
 
-Si encuentras errores sobre columnas faltantes o nombres de campos, revisa las primeras celdas donde se definen `CRITICAL_VARS` y las rutas de datos. Contacta si quieres que arregle alguna celda.
+```
+tesis_riesgo_lesion_R1/
+├── notebooks/
+│   ├── R1_Feature_Engineering.ipynb      # R1: Análisis exploratorio y Feature Engineering
+│   ├── R3_Feature_Engineering_Document.ipynb  # R3: Documento técnico del dataset
+│   └── outputs/                          # Artefactos R1 + R3 (CSVs, tablas)
+├── src/
+│   └── etl/
+│       ├── config.py       # Configuración del pipeline (umbrales, rutas)
+│       ├── extract.py      # EXTRACT: lectura de PMData (10 fuentes × 16 participantes)
+│       ├── transform.py    # TRANSFORM: limpieza, feature eng., estandarización, selección
+│       ├── load.py         # LOAD: exportación CSV, TFRecord, tf.data.Dataset
+│       └── pipeline.py     # Orquestador Extract → Transform → Load
+├── tests/                   # 40 tests (pytest)
+│   ├── conftest.py
+│   ├── test_extract.py
+│   ├── test_transform.py
+│   ├── test_load.py
+│   └── test_pipeline.py
+├── run_pipeline.py          # CLI entry point: python run_pipeline.py -v
+└── README.md
+```
 
 ---
 
-## Contacto / Siguientes pasos
-- Si quieres, puedo:
-  - Generar y commitear un `requirements.txt` exacto desde el entorno `.venv` que tienes localmente (necesito que lo ejecutes y me confirmes o puedo añadir uno de ejemplo).
-  - Preparar un script `setup_env.ps1` que automatice la creación del venv, instalación e instalación del kernel.
+## Requerimientos Completados
 
-Dime qué prefieres y lo añado.
+### R1 — Feature Engineering Exploratorio
+- **Notebook**: `notebooks/R1_Feature_Engineering.ipynb` (47 celdas)
+- Análisis exploratorio, ingeniería de features, estandarización Yeo-Johnson, selección de variables
+- **Salida**: `notebooks/outputs/dataset_modelado_R1.csv` (2398 × 31)
+
+### R2 — Pipeline ETL de Producción
+- **Código**: `src/etl/` (5 módulos)
+- Pipeline reproducible: Extract → Transform → Load
+- 40 tests unitarios (pytest), todos pasan
+- **Ejecución**: `python run_pipeline.py -v`
+- **Salidas**:
+  - `src/outputs/dataset_modelado_R2.csv` (2398 × 57, todas las features)
+  - `src/outputs/train.tfrecord` (1651 examples, 28 features)
+  - `src/outputs/val.tfrecord` (295 examples)
+  - `src/outputs/test.tfrecord` (452 examples)
+
+### R3 — Dataset Final Curado + Documento Técnico
+- **Notebook**: `notebooks/R3_Feature_Engineering_Document.ipynb` (26 celdas)
+- Documento técnico de Feature Engineering que define y justifica cada variable creada
+- Contenido:
+  - Estadísticas descriptivas y distribución de prevalencia de lesiones (3.0%, ratio 1:32)
+  - Fórmulas con LaTeX de variables derivadas (ACWR, TRIMP, Sleep Debt, RHR Drift, etc.)
+  - Tabla técnica de 29 variables con tipo, fuente, fórmula, normalización y justificación
+  - Tratamiento de nulos y outliers
+  - Comparación de estandarización Yeo-Johnson vs StandardScaler
+  - Análisis de correlación (Spearman) y multicolinealidad
+  - PCA: scree plot y varianza acumulada (18 comp. → 85%, 22 → 90%, 28 → 95%)
+  - Validación cruzada R1 ↔ R2 (KS test: 28/29 variables equivalentes)
+  - Verificación de roundtrip TFRecord (2398/2398 match)
+  - 11 referencias bibliográficas
+- **Salidas**:
+  - `notebooks/outputs/R3_feature_engineering_document.csv`
+  - `notebooks/outputs/R3_dataset_specification.csv`
+  - `notebooks/outputs/R3_validacion_R1_vs_R2.csv`
+
+---
+
+## Ejecución Rápida
+
+### Notebook R1 (Exploratorio)
+1. Activar el entorno y seleccionar el kernel `tesis_riesgo_R1` en Jupyter.
+2. Abrir `notebooks/R1_Feature_Engineering.ipynb`.
+3. Ejecutar las celdas en orden ("Restart & Run All").
+
+### Pipeline R2 (ETL)
+```powershell
+.\.venv\Scripts\Activate.ps1
+python run_pipeline.py -v
+```
+
+### Notebook R3 (Documento Técnico)
+1. Ejecutar primero el pipeline R2 para generar los archivos de salida.
+2. Abrir `notebooks/R3_Feature_Engineering_Document.ipynb`.
+3. Ejecutar todas las celdas en orden.
+
+### Tests
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pytest tests/ -v
+```
+
+---
+
+## Dataset Final
+
+| Aspecto | Valor |
+|---------|-------|
+| Filas | 2,398 |
+| Features (completo CSV) | 54 |
+| Features (seleccionadas, TFRecord) | 28 |
+| Target | `is_injured` (binaria, 3.0% prevalencia) |
+| Participantes | 16 |
+| Estandarización | Yeo-Johnson (PowerTransformer) |
+| Split (por participante) | Train: 11 pids (1,651) / Val: 2 pids (295) / Test: 3 pids (452) |
+| Formatos | CSV + TFRecord |
