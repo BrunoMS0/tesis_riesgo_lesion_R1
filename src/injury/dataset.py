@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from .config import InjuryConfig
+from .normalize import NormalizerResult, apply_normalizer, fit_normalizer
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,12 @@ class InjuryDatasetBundle:
     test_pids: List[str]
 
     feature_columns: List[str]
+    normalizer: Optional[NormalizerResult] = None
+
+    # Raw (pre-normalization) copies for LOSO per-fold normalisation
+    X_train_raw: Optional[pd.DataFrame] = None
+    X_val_raw: Optional[pd.DataFrame] = None
+    X_test_raw: Optional[pd.DataFrame] = None
 
 
 # ────────────────────────────────────────────────────────────
@@ -185,10 +192,23 @@ def build_injury_datasets(cfg: InjuryConfig) -> InjuryDatasetBundle:
     logger.info("Dataset splits — train: %d, val: %d, test: %d",
                 len(X_train), len(X_val), len(X_test))
 
+    # ── Normalisation (KS + Yeo-Johnson + z-score) ────────
+    X_train_raw = X_train.copy()
+    X_val_raw = X_val.copy()
+    X_test_raw = X_test.copy()
+
+    normalizer = fit_normalizer(X_train)
+    X_train = apply_normalizer(X_train, normalizer)
+    X_val = apply_normalizer(X_val, normalizer)
+    X_test = apply_normalizer(X_test, normalizer)
+    logger.info("Normalisation applied (fit on train only)")
+
     return InjuryDatasetBundle(
         X_train=X_train, y_train=y_train, meta_train=meta_train,
         X_val=X_val, y_val=y_val, meta_val=meta_val,
         X_test=X_test, y_test=y_test, meta_test=meta_test,
         train_pids=train_pids, val_pids=val_pids, test_pids=test_pids,
         feature_columns=feat_cols,
+        normalizer=normalizer,
+        X_train_raw=X_train_raw, X_val_raw=X_val_raw, X_test_raw=X_test_raw,
     )

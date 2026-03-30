@@ -1,13 +1,13 @@
 """
 evaluate.py – Evaluation suite for R5 Injury Risk Prediction.
 
-Computes metrics, generates plots, SHAP feature importance,
-per-participant breakdown, and model comparison (ablation).
+Computes metrics, generates plots, model coefficient importance,
+per-participant breakdown, and model comparison.
 
 Public API
 ----------
 evaluate_model(model, X_test, y_test, meta_test, cfg) -> EvaluationResult
-compute_shap_values(model, X_test, cfg) -> ShapResult
+compute_coefficient_importance(model, feature_names) -> pd.DataFrame
 compare_models(results_dict) -> pd.DataFrame
 """
 
@@ -27,10 +27,10 @@ from sklearn.metrics import (
     brier_score_loss,
     confusion_matrix,
     f1_score,
-    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
+    roc_curve,
 )
 
 from .config import InjuryConfig
@@ -49,25 +49,21 @@ class EvaluationResult:
     optimal_threshold: float = 0.5
 
 
-@dataclass
-class ShapResult:
-    """SHAP analysis output."""
-
-    shap_values: Any = None          # np.ndarray
-    feature_importance: Optional[pd.DataFrame] = None
-
-
 def _find_optimal_threshold(y_true, y_prob) -> float:
-    """Find threshold that maximises F1 from the PR curve."""
-    precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
-    # Avoid division by zero
-    f1_scores = np.where(
-        (precision + recall) > 0,
-        2 * precision * recall / (precision + recall),
+    """Find threshold that maximises F1 from the ROC curve."""
+    fpr, tpr, thresholds = roc_curve(y_true, y_prob)
+    # Compute F1-like metric from TPR and FPR
+    precision = np.where(
+        (tpr + fpr) > 0,
+        tpr / (tpr + fpr),
         0.0,
     )
-    # thresholds has len = len(precision) - 1
-    best_idx = np.argmax(f1_scores[:-1])
+    f1_scores = np.where(
+        (precision + tpr) > 0,
+        2 * precision * tpr / (precision + tpr),
+        0.0,
+    )
+    best_idx = np.argmax(f1_scores)
     return float(thresholds[best_idx])
 
 
@@ -77,7 +73,7 @@ def evaluate_model(
     y_test: pd.Series,
     meta_test: pd.DataFrame,
     cfg: InjuryConfig,
-    model_name: str = "XGBoost",
+    model_name: str = "LogisticRegression",
 ) -> EvaluationResult:
     """
     Run the full metrics suite on a trained model.
@@ -89,28 +85,28 @@ def evaluate_model(
     """
     y_prob = model.predict_proba(X_test)[:, 1]
 
-    # Optimal threshold from PR curve
-    if y_test.sum() > 0:
+    # Optimal threshold from ROC curve
+    if y_test.sum() > 0 and y_test.nunique() > 1:
         threshold = _find_optimal_threshold(y_test, y_prob)
     else:
         threshold = 0.5
     y_pred = (y_prob >= threshold).astype(int)
 
-    # Primary metric: PR-AUC
-    try:
-        pr_auc = average_precision_score(y_test, y_prob)
-    except ValueError:
-        pr_auc = 0.0
-
-    # Secondary metrics
+    # Primary metric: ROC-AUC
     try:
         roc_auc = roc_auc_score(y_test, y_prob)
     except ValueError:
         roc_auc = 0.0
 
+    # Secondary metrics
+    try:
+        pr_auc = average_precision_score(y_test, y_prob)
+    except ValueError:
+        pr_auc = 0.0
+
     metrics = {
-        "pr_auc": round(pr_auc, 4),
         "roc_auc": round(roc_auc, 4),
+        "pr_auc": round(pr_auc, 4),
         "f1": round(f1_score(y_test, y_pred, zero_division=0.0), 4),
         "precision": round(precision_score(y_test, y_pred, zero_division=0.0), 4),
         "recall": round(recall_score(y_test, y_pred, zero_division=0.0), 4),
@@ -124,8 +120,8 @@ def evaluate_model(
     # Per-participant breakdown
     per_part = _per_participant_breakdown(y_test, y_prob, y_pred, meta_test, threshold)
 
-    logger.info("[%s] PR-AUC=%.4f, ROC-AUC=%.4f, F1=%.4f, threshold=%.4f",
-                model_name, metrics["pr_auc"], metrics["roc_auc"],
+    logger.info("[%s] ROC-AUC=%.4f, PR-AUC=%.4f, F1=%.4f, threshold=%.4f",
+                model_name, metrics["roc_auc"], metrics["pr_auc"],
                 metrics["f1"], threshold)
 
     return EvaluationResult(
@@ -164,56 +160,63 @@ def _per_participant_breakdown(
     return pd.DataFrame(rows)
 
 
-def compute_shap_values(
+def compute_coefficient_importance(
     model,
-    X_test: pd.DataFrame,
-    cfg: InjuryConfig,
-) -> ShapResult:
+    feature_names: List[str],
+) -> pd.DataFrame:
     """
-    Compute SHAP values for model interpretability.
+    Extract and rank Logistic Regression coefficients as feature importance.
+
+    Parameters
+    ----------
+    model : fitted LogisticRegression (or LogisticRegressionCV)
+    feature_names : list of feature column names
 
     Returns
     -------
-    ShapResult with SHAP values array and feature importance DataFrame.
+    DataFrame with columns [feature, coefficient, abs_coefficient],
+    sorted by absolute importance.
     """
-    import shap
-
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_test)
-
-    # Feature importance: mean absolute SHAP value per feature
+    coefs = model.coef_[0]
     importance = pd.DataFrame({
-        "feature": X_test.columns,
-        "mean_abs_shap": np.abs(shap_values).mean(axis=0),
-    }).sort_values("mean_abs_shap", ascending=False).reset_index(drop=True)
+        "feature": feature_names,
+        "coefficient": coefs,
+        "abs_coefficient": np.abs(coefs),
+    }).sort_values("abs_coefficient", ascending=False).reset_index(drop=True)
 
-    logger.info("SHAP analysis complete — top feature: %s (%.4f)",
+    logger.info("Coefficient analysis — top feature: %s (coef=%.4f)",
                 importance.iloc[0]["feature"],
-                importance.iloc[0]["mean_abs_shap"])
+                importance.iloc[0]["coefficient"])
 
-    return ShapResult(shap_values=shap_values, feature_importance=importance)
+    return importance
 
 
-def save_shap_plot(
-    shap_result: ShapResult,
-    X_test: pd.DataFrame,
+def save_coefficient_plot(
+    importance_df: pd.DataFrame,
     output_path: str,
+    top_n: int = 20,
 ) -> str:
-    """Save a SHAP summary bar plot to disk."""
-    import shap
+    """Save a horizontal bar plot of top coefficient magnitudes."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     Path(output_path).mkdir(parents=True, exist_ok=True)
-    fig_path = os.path.join(output_path, "shap_summary.png")
+    fig_path = os.path.join(output_path, "coefficient_importance.png")
 
-    shap.summary_plot(shap_result.shap_values, X_test, plot_type="bar", show=False)
+    df_plot = importance_df.head(top_n).sort_values("abs_coefficient")
+    colors = ["#d62728" if c < 0 else "#2ca02c"
+              for c in df_plot["coefficient"]]
+
+    fig, ax = plt.subplots(figsize=(10, max(6, top_n * 0.35)))
+    ax.barh(df_plot["feature"], df_plot["coefficient"], color=colors)
+    ax.set_xlabel("Coefficient value")
+    ax.set_title("Logistic Regression – Feature Coefficients (Top %d)" % top_n)
     plt.tight_layout()
     plt.savefig(fig_path, dpi=150, bbox_inches="tight")
     plt.close()
 
-    logger.info("SHAP summary plot saved to %s", fig_path)
+    logger.info("Coefficient plot saved to %s", fig_path)
     return fig_path
 
 

@@ -25,8 +25,8 @@ from sklearn.metrics import (
 )
 
 from .config import InjuryConfig
-from .model import build_xgboost
-from .train import compute_scale_pos_weight
+from .model import build_logistic_regression
+from .normalize import apply_normalizer, fit_normalizer
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,8 @@ class LOSOFoldResult:
     participant_id: str
     n_samples: int
     n_injuries: int
-    pr_auc: float
     roc_auc: float
+    pr_auc: float
     f1: float
 
 
@@ -48,10 +48,10 @@ class LOSOResult:
     """Aggregated LOSO cross-validation results."""
 
     folds: List[LOSOFoldResult] = field(default_factory=list)
-    mean_pr_auc: float = 0.0
     mean_roc_auc: float = 0.0
+    mean_pr_auc: float = 0.0
     mean_f1: float = 0.0
-    std_pr_auc: float = 0.0
+    std_roc_auc: float = 0.0
 
 
 def loso_cross_validation(
@@ -67,8 +67,8 @@ def loso_cross_validation(
 
     For each of the N real participants:
       1. Hold out that participant as the test fold.
-      2. Optionally augment the remaining training data with synthetic athletes.
-      3. Train an XGBoost model and evaluate on the held-out participant.
+      2. Optionally augment the remaining training data.
+      3. Train a Logistic Regression model and evaluate on the held-out participant.
 
     Parameters
     ----------
@@ -77,7 +77,7 @@ def loso_cross_validation(
     meta : DataFrame with [participant_id, date]
     cfg : InjuryConfig
     use_augmentation : bool
-        If True, generate synthetic athletes per fold (slower but better).
+        If True, augment training data per fold (slower but better).
 
     Returns
     -------
@@ -101,23 +101,25 @@ def loso_cross_validation(
         X_fold_test = X.loc[mask_test].reset_index(drop=True)
         y_fold_test = y.loc[mask_test].reset_index(drop=True)
 
+        # Per-fold normalisation (fit on fold train only)
+        fold_normalizer = fit_normalizer(X_fold_train)
+        X_fold_train = apply_normalizer(X_fold_train, fold_normalizer)
+        X_fold_test = apply_normalizer(X_fold_test, fold_normalizer)
+
         # Optionally augment training data
-        if use_augmentation and cfg.n_synthetic_athletes > 0:
+        if use_augmentation:
             try:
-                from .augment import generate_synthetic_athletes
-                X_fold_train, y_fold_train, _ = generate_synthetic_athletes(
+                from .augment import augment_training_data
+                X_fold_train, y_fold_train = augment_training_data(
                     X_fold_train, y_fold_train, meta_fold_train, cfg,
                 )
             except Exception as exc:
                 logger.warning("Augmentation failed for fold %d (%s): %s",
                                i, held_out_pid, exc)
 
-        # Compute class weight and build model
-        spw = compute_scale_pos_weight(y_fold_train)
-        model = build_xgboost(cfg, scale_pos_weight=spw)
-
-        # Train (use a small held-out slice from training for early stopping)
-        model.fit(X_fold_train, y_fold_train, verbose=False)
+        # Build and train model
+        model = build_logistic_regression(cfg)
+        model.fit(X_fold_train, y_fold_train)
 
         # Predict probabilities on held-out participant
         y_prob = model.predict_proba(X_fold_test)[:, 1]
@@ -127,14 +129,14 @@ def loso_cross_validation(
 
         # Compute metrics (handle edge cases where fold has no injuries)
         try:
-            pr_auc = average_precision_score(y_fold_test, y_prob)
-        except ValueError:
-            pr_auc = 0.0
-
-        try:
             roc_auc = roc_auc_score(y_fold_test, y_prob)
         except ValueError:
             roc_auc = 0.0
+
+        try:
+            pr_auc = average_precision_score(y_fold_test, y_prob)
+        except ValueError:
+            pr_auc = 0.0
 
         f1 = f1_score(y_fold_test, y_pred, zero_division=0.0)
 
@@ -142,31 +144,31 @@ def loso_cross_validation(
             participant_id=held_out_pid,
             n_samples=len(y_fold_test),
             n_injuries=n_injuries,
-            pr_auc=round(pr_auc, 4),
             roc_auc=round(roc_auc, 4),
+            pr_auc=round(pr_auc, 4),
             f1=round(f1, 4),
         )
         folds.append(fold_result)
-        logger.info("Fold %d/%d [%s]: PR-AUC=%.4f, ROC-AUC=%.4f, F1=%.4f "
+        logger.info("Fold %d/%d [%s]: ROC-AUC=%.4f, PR-AUC=%.4f, F1=%.4f "
                      "(n=%d, injuries=%d)",
                      i, len(pids), held_out_pid,
-                     fold_result.pr_auc, fold_result.roc_auc, fold_result.f1,
+                     fold_result.roc_auc, fold_result.pr_auc, fold_result.f1,
                      fold_result.n_samples, fold_result.n_injuries)
 
     # Aggregate
-    pr_aucs = [f.pr_auc for f in folds]
     roc_aucs = [f.roc_auc for f in folds]
+    pr_aucs = [f.pr_auc for f in folds]
     f1s = [f.f1 for f in folds]
 
     result = LOSOResult(
         folds=folds,
-        mean_pr_auc=round(float(np.mean(pr_aucs)), 4),
         mean_roc_auc=round(float(np.mean(roc_aucs)), 4),
+        mean_pr_auc=round(float(np.mean(pr_aucs)), 4),
         mean_f1=round(float(np.mean(f1s)), 4),
-        std_pr_auc=round(float(np.std(pr_aucs)), 4),
+        std_roc_auc=round(float(np.std(roc_aucs)), 4),
     )
-    logger.info("LOSO complete — mean PR-AUC=%.4f (±%.4f), "
-                "mean ROC-AUC=%.4f, mean F1=%.4f",
-                result.mean_pr_auc, result.std_pr_auc,
-                result.mean_roc_auc, result.mean_f1)
+    logger.info("LOSO complete — mean ROC-AUC=%.4f (±%.4f), "
+                "mean PR-AUC=%.4f, mean F1=%.4f",
+                result.mean_roc_auc, result.std_roc_auc,
+                result.mean_pr_auc, result.mean_f1)
     return result

@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
+from sklearn.feature_selection import f_classif
 from sklearn.preprocessing import PowerTransformer
 
 from .config import PipelineConfig
@@ -45,6 +46,7 @@ class TransformResult:
     transformer: PowerTransformer
     feature_cols: List[str]
     metadata: Dict = field(default_factory=dict)
+    selection_report: Optional[pd.DataFrame] = None
 
 
 # ────────────────────────────────────────────────────────────
@@ -256,7 +258,11 @@ def select_features(
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     Remove features by multicollinearity (|ρ| > threshold) and
-    low correlation with the target (|ρ| < low_corr_threshold).
+    low relevance with the target, assessed by three complementary
+    methods: Spearman ρ, Pearson r, and ANOVA F-test.
+
+    A feature is dropped for low relevance only when **all three**
+    methods agree it is below the threshold.
 
     Returns
     -------
@@ -266,13 +272,46 @@ def select_features(
     to_drop: set = set()
 
     # ── Spearman correlations with target ─────────────────
-    corr_with_target: Dict[str, float] = {}
+    spearman_corr: Dict[str, float] = {}
     for col in feat_cols:
         valid = df[[col, target]].dropna()
         if len(valid) < 20:
             continue
         rho, _ = spearmanr(valid[col], valid[target])
-        corr_with_target[col] = abs(rho)
+        spearman_corr[col] = abs(rho)
+
+    # ── Pearson correlations with target ──────────────────
+    pearson_corr: Dict[str, float] = {}
+    for col in feat_cols:
+        valid = df[[col, target]].dropna()
+        if len(valid) < 20:
+            continue
+        r = valid[col].corr(valid[target])
+        pearson_corr[col] = abs(r) if pd.notna(r) else 0.0
+
+    # ── ANOVA F-test (continuous features vs binary target) ─
+    anova_scores: Dict[str, float] = {}
+    anova_pvals: Dict[str, float] = {}
+    valid_mask = df[feat_cols + [target]].dropna()
+    if len(valid_mask) >= 20 and valid_mask[target].nunique() == 2:
+        X_anova = valid_mask[feat_cols].values
+        y_anova = valid_mask[target].values
+        f_vals, p_vals = f_classif(X_anova, y_anova)
+        for idx, col in enumerate(feat_cols):
+            anova_scores[col] = float(f_vals[idx]) if np.isfinite(f_vals[idx]) else 0.0
+            anova_pvals[col] = float(p_vals[idx]) if np.isfinite(p_vals[idx]) else 1.0
+
+    # ── Build selection report ────────────────────────────
+    report_rows = []
+    for col in feat_cols:
+        report_rows.append({
+            "feature": col,
+            "spearman_rho": round(spearman_corr.get(col, 0.0), 4),
+            "pearson_r": round(pearson_corr.get(col, 0.0), 4),
+            "anova_f": round(anova_scores.get(col, 0.0), 4),
+            "anova_p": round(anova_pvals.get(col, 1.0), 4),
+        })
+    report_df = pd.DataFrame(report_rows)
 
     # ── Multicollinearity ─────────────────────────────────
     corr_matrix = df[feat_cols].corr(method="spearman")
@@ -281,16 +320,24 @@ def select_features(
             r = abs(corr_matrix.iloc[i, j])
             if r > cfg.multicol_threshold:
                 v1, v2 = corr_matrix.columns[i], corr_matrix.columns[j]
-                c1 = corr_with_target.get(v1, 0)
-                c2 = corr_with_target.get(v2, 0)
+                c1 = spearman_corr.get(v1, 0)
+                c2 = spearman_corr.get(v2, 0)
                 drop = v2 if c1 >= c2 else v1
                 to_drop.add(drop)
                 logger.debug("Multicollinearity: drop %s (ρ=%.3f)", drop, r)
 
-    # ── Low‑correlation filter ────────────────────────────
-    for col, rho in corr_with_target.items():
-        if rho < cfg.low_corr_threshold:
+    # ── Low‑relevance filter (consensus of 3 methods) ────
+    for col in feat_cols:
+        sp_low = spearman_corr.get(col, 0.0) < cfg.low_corr_threshold
+        pe_low = pearson_corr.get(col, 0.0) < cfg.low_corr_threshold
+        an_low = anova_pvals.get(col, 1.0) > 0.05  # not significant
+        if sp_low and pe_low and an_low:
             to_drop.add(col)
+
+    # Decision column in report
+    report_df["decision"] = report_df["feature"].apply(
+        lambda f: "drop" if f in to_drop else "keep"
+    )
 
     # Protect essentials
     safe = set(cfg.protected_cols) | {target}
@@ -306,7 +353,7 @@ def select_features(
         "Variable selection: dropped %d → %d features remain",
         len(to_drop), len(final_features),
     )
-    return df_selected, final_features
+    return df_selected, final_features, report_df
 
 
 # ────────────────────────────────────────────────────────────
@@ -318,7 +365,7 @@ def transform(df_raw: pd.DataFrame, cfg: PipelineConfig) -> TransformResult:
     df_clean = clean(df_raw, cfg)
     df_feat  = engineer_features(df_clean, cfg)
     df_std, pt, feat_cols = standardise(df_feat, cfg)
-    df_sel, final_feats   = select_features(df_std, feat_cols, cfg)
+    df_sel, final_feats, selection_report = select_features(df_std, feat_cols, cfg)
 
     return TransformResult(
         df_cleaned=df_clean,
@@ -332,4 +379,5 @@ def transform(df_raw: pd.DataFrame, cfg: PipelineConfig) -> TransformResult:
             "n_features_final": len(final_feats),
             "standardisation": "Yeo-Johnson",
         },
+        selection_report=selection_report,
     )

@@ -20,11 +20,12 @@ import joblib
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.preprocessing import PowerTransformer
 
 from src.fatigue.config import FatigueConfig
 from src.fatigue.model import TemporalAttention, build_fatigue_model
 from src.injury.config import InjuryConfig, FEATURE_COLUMNS
-from src.injury.model import build_xgboost
+from src.injury.model import build_logistic_regression
 from src.integration.config import IntegrationConfig
 from src.integration.pipeline import (
     IntegrationReport,
@@ -150,7 +151,7 @@ def fatigue_model_path(tmp_path, synthetic_csv):
 
 @pytest.fixture()
 def injury_model_path(tmp_path):
-    """Train a tiny XGBoost model on random data and save as .joblib."""
+    """Train a tiny Logistic Regression model on random data and save as .joblib."""
     rng = np.random.RandomState(42)
 
     # Use the actual R5 feature columns so predict_proba works
@@ -161,22 +162,37 @@ def injury_model_path(tmp_path):
         {f: rng.randn(n_train) for f in feature_cols})
     y_train = pd.Series((rng.rand(n_train) > 0.9).astype(int))
 
-    cfg = InjuryConfig(xgb_n_estimators=5, xgb_early_stopping=3)
-    model = build_xgboost(cfg, scale_pos_weight=9.0)
+    cfg = InjuryConfig()
+    model = build_logistic_regression(cfg)
     model.fit(X_train, y_train)
 
-    model_path = tmp_path / "test_xgb.joblib"
+    model_path = tmp_path / "test_lr.joblib"
     joblib.dump(model, str(model_path))
     return str(model_path)
 
 
 @pytest.fixture()
+def normalizer_path(tmp_path):
+    """Fit a PowerTransformer on random data and save as .joblib."""
+    rng = np.random.RandomState(42)
+    feature_cols = list(FEATURE_COLUMNS)
+    n_train = 200
+    X_train = pd.DataFrame({f: rng.randn(n_train) for f in feature_cols})
+    pt = PowerTransformer(method="yeo-johnson", standardize=True)
+    pt.fit(X_train)
+    path = tmp_path / "test_normalizer.joblib"
+    joblib.dump(pt, str(path))
+    return str(path)
+
+
+@pytest.fixture()
 def integration_cfg(synthetic_csv, fatigue_model_path, injury_model_path,
-                    tmp_path):
+                    normalizer_path, tmp_path):
     """Full IntegrationConfig wired to synthetic artefacts."""
     return IntegrationConfig(
         fatigue_model_path=fatigue_model_path,
         injury_model_path=injury_model_path,
+        normalizer_path=normalizer_path,
         output_path=str(tmp_path / "integration_out"),
         fatigue_cfg=FatigueConfig(
             input_csv=synthetic_csv,
@@ -201,14 +217,15 @@ def integration_cfg(synthetic_csv, fatigue_model_path, injury_model_path,
 class TestModelLoading:
     def test_loads_both_models(self, integration_cfg):
         """R4 (Keras + TemporalAttention) and R5 (joblib) load OK."""
-        fatigue_model, injury_model = load_models(integration_cfg)
+        fatigue_model, injury_model, normalizer = load_models(integration_cfg)
         assert fatigue_model is not None
         assert fatigue_model.count_params() > 0
         assert hasattr(injury_model, "predict_proba")
+        assert hasattr(normalizer, "transform")
 
     def test_fatigue_model_has_attention(self, integration_cfg):
         """Loaded model contains the TemporalAttention custom layer."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         layer_types = [type(l).__name__ for l in fatigue_model.layers]
         assert "TemporalAttention" in layer_types
 
@@ -226,7 +243,7 @@ class TestEndToEnd:
 
     def test_dfi_in_range(self, integration_cfg):
         """DFI predictions are within [0, 1]."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
         assert dfi_df["dfi_predicted"].between(0, 1).all()
 
@@ -261,7 +278,7 @@ class TestEndToEnd:
 class TestHandoffIntegrity:
     def test_merge_produces_dfi_column(self, integration_cfg):
         """In-memory merge injects dfi_predicted column."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
         merged = merge_dfi_features(dfi_df, integration_cfg)
         assert "dfi_predicted" in merged.columns
@@ -269,7 +286,7 @@ class TestHandoffIntegrity:
 
     def test_merge_preserves_row_count(self, integration_cfg):
         """LEFT JOIN does not inflate or drop rows."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
         icfg = integration_cfg.injury_cfg
         original = pd.read_csv(icfg.input_csv)
@@ -278,7 +295,7 @@ class TestHandoffIntegrity:
 
     def test_feature_count_matches_config(self, integration_cfg):
         """R5 receives the expected number of feature columns."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
         merged = merge_dfi_features(dfi_df, integration_cfg)
         icfg = integration_cfg.injury_cfg
@@ -295,7 +312,7 @@ class TestHandoffIntegrity:
 class TestColdStartImputation:
     def test_missing_participant_filled(self, integration_cfg):
         """Participant with NO DFI predictions gets imputed values."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
 
         # Remove all predictions for one participant
@@ -310,7 +327,7 @@ class TestColdStartImputation:
 
     def test_partial_missing_filled(self, integration_cfg):
         """Rows without DFI (e.g., first 13 days) get filled."""
-        fatigue_model, _ = load_models(integration_cfg)
+        fatigue_model, _, _ = load_models(integration_cfg)
         dfi_df = generate_dfi(fatigue_model, integration_cfg)
         merged = merge_dfi_features(dfi_df, integration_cfg)
         assert not merged["dfi_predicted"].isna().any()
@@ -326,6 +343,7 @@ class TestErrorHandling:
         bad_cfg = IntegrationConfig(
             fatigue_model_path="/nonexistent/model.keras",
             injury_model_path=integration_cfg.injury_model_path,
+            normalizer_path=integration_cfg.normalizer_path,
             fatigue_cfg=integration_cfg.fatigue_cfg,
             injury_cfg=integration_cfg.injury_cfg,
         )
@@ -337,6 +355,7 @@ class TestErrorHandling:
         bad_cfg = IntegrationConfig(
             fatigue_model_path=integration_cfg.fatigue_model_path,
             injury_model_path="/nonexistent/model.joblib",
+            normalizer_path=integration_cfg.normalizer_path,
             fatigue_cfg=integration_cfg.fatigue_cfg,
             injury_cfg=integration_cfg.injury_cfg,
         )

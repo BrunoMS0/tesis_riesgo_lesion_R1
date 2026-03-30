@@ -1,13 +1,13 @@
 """
 train.py – Training pipeline for R5 Injury Risk Prediction models.
 
-Handles fitting XGBoost with early stopping on validation data
-and saving model artifacts.
+Handles fitting Logistic Regression with optional hyper-parameter
+search (LogisticRegressionCV) and saving model artifacts.
 
 Public API
 ----------
-train_injury_model(model, X_train, y_train, X_val, y_val, cfg) -> trained model
-compute_scale_pos_weight(y) -> float
+train_injury_model(model, X_train, y_train, cfg) -> trained model
+train_with_cv(X_train, y_train, cfg) -> LogisticRegressionCV
 save_model(model, path, name) -> str
 """
 
@@ -16,64 +16,61 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegressionCV
 
 from .config import InjuryConfig
 
 logger = logging.getLogger(__name__)
 
 
-def compute_scale_pos_weight(y: pd.Series) -> float:
-    """Compute scale_pos_weight = n_negative / n_positive."""
-    n_pos = int(y.sum())
-    n_neg = len(y) - n_pos
-    if n_pos == 0:
-        logger.warning("No positive samples; scale_pos_weight set to 1.0")
-        return 1.0
-    weight = n_neg / n_pos
-    logger.info("scale_pos_weight = %.2f  (neg=%d, pos=%d)", weight, n_neg, n_pos)
-    return weight
-
-
 def train_injury_model(
     model,
     X_train: pd.DataFrame,
     y_train: pd.Series,
-    X_val: pd.DataFrame,
-    y_val: pd.Series,
     cfg: InjuryConfig,
 ):
     """
-    Fit a classifier with early stopping on validation PR-AUC.
-
-    For XGBoost models, uses ``eval_set`` + ``early_stopping_rounds``.
-    For scikit-learn models (e.g. RandomForest), fits directly.
+    Fit a classifier on training data.
 
     Returns the fitted model.
     """
     model_type = type(model).__name__
+    model.fit(X_train, y_train)
+    logger.info("%s training done (%d samples, %d features)",
+                model_type, len(X_train), X_train.shape[1])
+    return model
 
-    if model_type == "XGBClassifier":
-        model.fit(
-            X_train, y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False,
-        )
-        # Retrieve best iteration info
-        best_iter = getattr(model, "best_iteration", None)
-        if best_iter is not None:
-            logger.info("XGBoost training done — best iteration: %d", best_iter)
-        else:
-            logger.info("XGBoost training done — %d estimators", cfg.xgb_n_estimators)
-    else:
-        # scikit-learn style (RF, etc.)
-        model.fit(X_train, y_train)
-        logger.info("%s training done", model_type)
 
+def train_with_cv(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    cfg: InjuryConfig,
+) -> LogisticRegressionCV:
+    """
+    Train LogisticRegressionCV to automatically select C via cross-validation.
+
+    Uses 5-fold stratified CV, scoring by AUC-ROC.
+
+    Returns the fitted model with optimal C.
+    """
+    model = LogisticRegressionCV(
+        Cs=10,
+        penalty=cfg.lr_penalty,
+        solver=cfg.lr_solver,
+        max_iter=cfg.lr_max_iter,
+        class_weight=cfg.lr_class_weight,
+        scoring="roc_auc",
+        cv=5,
+        random_state=cfg.seed,
+    )
+    model.fit(X_train, y_train)
+    best_C = float(model.C_[0])
+    logger.info("LogisticRegressionCV done — best C=%.6f (5-fold AUC-ROC)",
+                best_C)
     return model
 
 

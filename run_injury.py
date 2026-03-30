@@ -8,6 +8,8 @@ Usage
     python run_injury.py --input-csv /path/data.csv  # override input
     python run_injury.py --dfi-csv /path/dfi.csv     # override DFI predictions
     python run_injury.py --output /out               # override output path
+    python run_injury.py --augmentation smote         # SMOTE augmentation
+    python run_injury.py --augmentation copula        # Gaussian Copula augmentation
     python run_injury.py -v                          # verbose (DEBUG) logging
 """
 
@@ -38,6 +40,11 @@ def _parse_args() -> argparse.Namespace:
         help="Path to store pipeline outputs (default from config).",
     )
     p.add_argument(
+        "--augmentation", type=str, default=None,
+        choices=["smote", "copula"],
+        help="Data augmentation method: 'smote' or 'copula' (default from config).",
+    )
+    p.add_argument(
         "-v", "--verbose", action="store_true",
         help="Enable DEBUG-level logging.",
     )
@@ -61,6 +68,8 @@ def main() -> None:
         overrides["dfi_csv"] = args.dfi_csv
     if args.output:
         overrides["output_path"] = args.output
+    if args.augmentation:
+        overrides["augmentation_method"] = args.augmentation
     cfg = InjuryConfig(**overrides)
 
     report = run(cfg)
@@ -73,9 +82,9 @@ def main() -> None:
     print(f"  {'TOTAL':<30s}  {report.total_duration_s:>7.2f}s")
     print(f"\nTrain: {report.n_train} (augmented: {report.n_train_augmented})")
     print(f"Val: {report.n_val}  |  Test: {report.n_test}  |  Features: {report.n_features}")
-    print(f"\nXGBoost  PR-AUC: {report.xgb_metrics.get('pr_auc', 'N/A')}")
-    print(f"RF       PR-AUC: {report.rf_metrics.get('pr_auc', 'N/A')}")
-    print(f"LOSO     PR-AUC: {report.loso_pr_auc}")
+    print(f"\nLogistic Regression  ROC-AUC: {report.lr_metrics.get('roc_auc', 'N/A')}")
+    print(f"Baseline             ROC-AUC: {report.baseline_metrics.get('roc_auc', 'N/A')}")
+    print(f"LOSO                 ROC-AUC: {report.loso_roc_auc}")
     if report.comparison_table is not None:
         print(f"\n{report.comparison_table.to_string()}")
 

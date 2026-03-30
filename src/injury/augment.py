@@ -1,12 +1,18 @@
 """
-augment.py – Synthetic athlete generation via Gaussian Copula (SDV).
+augment.py – Data augmentation for R5 Injury Risk Prediction.
 
-Generates full synthetic athlete profiles from real training data to
-address the extreme class imbalance (~3% injury rate).  Only applied
-to the training set — validation and test data remain 100% real.
+Provides two strategies to address class imbalance:
+1. **SMOTE** – Synthetic Minority Over-sampling Technique (recommended).
+2. **Gaussian Copula** – Full synthetic athlete profiles via SDV.
+
+The ``augment_training_data`` dispatcher selects the strategy based on
+``cfg.augmentation_method`` and returns only (X, y) to simplify the
+downstream pipeline.
 
 Public API
 ----------
+augment_training_data(X_train, y_train, meta_train, cfg) -> Tuple[X, y]
+apply_smote(X_train, y_train, cfg) -> Tuple[X, y]
 generate_synthetic_athletes(X_train, y_train, meta_train, cfg) -> Tuple[X, y, meta]
 validate_synthetic(real_df, synth_df) -> Dict[str, float]
 """
@@ -22,6 +28,98 @@ import pandas as pd
 from .config import InjuryConfig
 
 logger = logging.getLogger(__name__)
+
+
+def augment_training_data(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    meta_train: pd.DataFrame,
+    cfg: InjuryConfig,
+) -> Tuple[pd.DataFrame, pd.Series]:
+    """
+    Dispatch to the configured augmentation method.
+
+    Parameters
+    ----------
+    X_train : feature matrix
+    y_train : binary target
+    meta_train : metadata (participant_id, date)
+    cfg : InjuryConfig with ``augmentation_method`` ('smote' | 'copula')
+
+    Returns
+    -------
+    X_aug, y_aug : augmented training data
+    """
+    method = cfg.augmentation_method.lower()
+
+    if method == "smote":
+        return apply_smote(X_train, y_train, cfg)
+    elif method == "copula":
+        X_aug, y_aug, _ = generate_synthetic_athletes(
+            X_train, y_train, meta_train, cfg,
+        )
+        return X_aug, y_aug
+    else:
+        raise ValueError(
+            f"Unknown augmentation method: {method!r}. Use 'smote' or 'copula'."
+        )
+
+
+def apply_smote(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    cfg: InjuryConfig,
+) -> Tuple[pd.DataFrame, pd.Series]:
+    """
+    Apply SMOTE to balance the training set.
+
+    Parameters
+    ----------
+    X_train : DataFrame of shape (n_train, n_features)
+    y_train : Series of shape (n_train,) — binary 0/1
+    cfg : InjuryConfig with target_ratio and smote_k_neighbors
+
+    Returns
+    -------
+    X_resampled : DataFrame (balanced features)
+    y_resampled : Series (balanced target)
+    """
+    from imblearn.over_sampling import SMOTE
+
+    n_pos = int(y_train.sum())
+    n_neg = len(y_train) - n_pos
+
+    if n_pos == 0:
+        logger.warning("No positive samples — SMOTE cannot be applied. "
+                       "Returning original data.")
+        return X_train.copy(), y_train.copy()
+
+    # Ensure k_neighbors doesn't exceed minority class size
+    k = min(cfg.smote_k_neighbors, n_pos - 1) if n_pos > 1 else 1
+
+    # sampling_strategy = desired ratio of minority to majority
+    sampling_strategy = cfg.target_ratio / (1 - cfg.target_ratio)
+    # Clamp: can't undersample majority via SMOTE
+    sampling_strategy = min(sampling_strategy, 1.0)
+
+    smote = SMOTE(
+        sampling_strategy=sampling_strategy,
+        k_neighbors=k,
+        random_state=cfg.seed,
+    )
+
+    X_res, y_res = smote.fit_resample(X_train, y_train)
+
+    # Convert back to DataFrame/Series with original column names
+    X_resampled = pd.DataFrame(X_res, columns=X_train.columns)
+    y_resampled = pd.Series(y_res, name=y_train.name)
+
+    n_synthetic = len(X_resampled) - len(X_train)
+    logger.info("SMOTE: generated %d synthetic samples (k=%d, ratio=%.2f). "
+                "Total: %d (injury rate %.1f%%)",
+                n_synthetic, k, sampling_strategy,
+                len(X_resampled), 100 * y_resampled.mean())
+    return X_resampled, y_resampled
 
 
 def generate_synthetic_athletes(

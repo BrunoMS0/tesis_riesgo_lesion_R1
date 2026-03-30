@@ -174,3 +174,37 @@ class TestBuildInjuryDatasets:
         bundle = build_injury_datasets(injury_cfg)
         total = len(bundle.X_train) + len(bundle.X_val) + len(bundle.X_test)
         assert total == N_DAYS * len(PIDS)
+
+
+# ────────────────────────────────────────────────────────────
+# Tests — Normalization
+# ────────────────────────────────────────────────────────────
+
+class TestBundleNormalization:
+    def test_normalizer_present(self, injury_cfg):
+        bundle = build_injury_datasets(injury_cfg)
+        assert bundle.normalizer is not None
+
+    def test_train_mean_near_zero(self, injury_cfg):
+        bundle = build_injury_datasets(injury_cfg)
+        means = bundle.X_train.mean()
+        assert means.abs().max() < 0.5, f"Max train mean {means.abs().max():.3f}"
+
+    def test_train_std_near_one(self, injury_cfg):
+        bundle = build_injury_datasets(injury_cfg)
+        stds = bundle.X_train.std()
+        assert (stds - 1).abs().max() < 0.5, f"Max std deviation {stds.max():.3f}"
+
+    def test_val_test_scaled(self, injury_cfg):
+        """Val/test should be scaled using train normalizer (not raw)."""
+        bundle = build_injury_datasets(injury_cfg)
+        # Raw data was uniform(0, 100) — normalized means must be far from 50
+        assert bundle.X_val.mean().abs().mean() < 10
+        assert bundle.X_test.mean().abs().mean() < 10
+
+    def test_normalizer_has_reports(self, injury_cfg):
+        bundle = build_injury_datasets(injury_cfg)
+        assert len(bundle.normalizer.pre_report) > 0
+        assert len(bundle.normalizer.post_report) > 0
+        assert "ks_statistic" in bundle.normalizer.pre_report.columns
+        assert "is_normal" in bundle.normalizer.post_report.columns

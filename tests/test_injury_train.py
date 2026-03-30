@@ -2,10 +2,10 @@
 test_injury_train.py – Smoke tests for R5 training pipeline.
 
 Validates:
-- XGBoost trains and produces finite predictions
-- scale_pos_weight computation
+- Logistic Regression trains and produces finite predictions
 - Model save / load round-trip
 - Evaluation metrics are finite
+- train_with_cv returns a fitted model
 """
 
 from __future__ import annotations
@@ -17,18 +17,14 @@ import pandas as pd
 import pytest
 
 from src.injury.config import InjuryConfig
-from src.injury.model import build_xgboost, build_random_forest
-from src.injury.train import compute_scale_pos_weight, save_model, train_injury_model
+from src.injury.model import build_logistic_regression, build_baseline_model
+from src.injury.train import save_model, train_injury_model, train_with_cv
 from src.injury.evaluate import evaluate_model
 
 
 @pytest.fixture()
 def cfg():
-    return InjuryConfig(
-        xgb_n_estimators=10,
-        rf_n_estimators=10,
-        xgb_early_stopping=5,
-    )
+    return InjuryConfig()
 
 
 @pytest.fixture()
@@ -57,34 +53,18 @@ def synthetic_split():
     }
 
 
-class TestScalePosWeight:
-    def test_computes_ratio(self):
-        y = pd.Series([0, 0, 0, 0, 1])
-        assert compute_scale_pos_weight(y) == 4.0
-
-    def test_no_positives(self):
-        y = pd.Series([0, 0, 0])
-        assert compute_scale_pos_weight(y) == 1.0
-
-
-class TestTrainXGBoost:
+class TestTrainLogisticRegression:
     def test_smoke_train(self, cfg, synthetic_split):
         s = synthetic_split
-        model = build_xgboost(cfg)
-        model = train_injury_model(
-            model, s["X_train"], s["y_train"],
-            s["X_val"], s["y_val"], cfg,
-        )
+        model = build_logistic_regression(cfg)
+        model = train_injury_model(model, s["X_train"], s["y_train"], cfg)
         proba = model.predict_proba(s["X_test"])[:, 1]
         assert np.all(np.isfinite(proba))
 
     def test_evaluation_metrics_finite(self, cfg, synthetic_split):
         s = synthetic_split
-        model = build_xgboost(cfg)
-        model = train_injury_model(
-            model, s["X_train"], s["y_train"],
-            s["X_val"], s["y_val"], cfg,
-        )
+        model = build_logistic_regression(cfg)
+        model = train_injury_model(model, s["X_train"], s["y_train"], cfg)
         result = evaluate_model(
             model, s["X_test"], s["y_test"], s["meta_test"], cfg,
         )
@@ -92,14 +72,20 @@ class TestTrainXGBoost:
             assert np.isfinite(v), f"{k} is not finite: {v}"
 
 
-class TestTrainRandomForest:
+class TestTrainBaseline:
     def test_smoke_train(self, cfg, synthetic_split):
         s = synthetic_split
-        model = build_random_forest(cfg)
-        model = train_injury_model(
-            model, s["X_train"], s["y_train"],
-            s["X_val"], s["y_val"], cfg,
-        )
+        model = build_baseline_model(cfg)
+        model = train_injury_model(model, s["X_train"], s["y_train"], cfg)
+        proba = model.predict_proba(s["X_test"])[:, 1]
+        assert np.all(np.isfinite(proba))
+
+
+class TestTrainWithCV:
+    def test_returns_fitted_model(self, cfg, synthetic_split):
+        s = synthetic_split
+        model = train_with_cv(s["X_train"], s["y_train"], cfg)
+        assert hasattr(model, "predict_proba")
         proba = model.predict_proba(s["X_test"])[:, 1]
         assert np.all(np.isfinite(proba))
 
@@ -107,7 +93,7 @@ class TestTrainRandomForest:
 class TestSaveModel:
     def test_save_creates_file(self, cfg, synthetic_split, tmp_path):
         s = synthetic_split
-        model = build_xgboost(cfg)
+        model = build_logistic_regression(cfg)
         model.fit(s["X_train"], s["y_train"])
         path = save_model(model, str(tmp_path), "test_model")
         assert os.path.exists(path)

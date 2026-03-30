@@ -78,29 +78,24 @@ TRAIN_SPLIT: float = 0.70
 VAL_SPLIT: float = 0.15    # test = 1 − train − val
 
 # ──────────────────────────────────────────────────────────────
-# Synthetic data generation (SDV Gaussian Copula)
+# Synthetic data / augmentation
 # ──────────────────────────────────────────────────────────────
 N_SYNTHETIC_ATHLETES: int = 32
+AUGMENTATION_METHOD: str = "smote"   # 'smote' | 'copula'
+TARGET_RATIO: float = 0.5           # minority class proportion (0.5 = 50/50)
+SMOTE_K_NEIGHBORS: int = 5
 
 # ──────────────────────────────────────────────────────────────
-# XGBoost hyper-parameters
+# Logistic Regression hyper-parameters
 # ──────────────────────────────────────────────────────────────
-XGB_N_ESTIMATORS: int = 300
-XGB_MAX_DEPTH: int = 6
-XGB_LEARNING_RATE: float = 0.05
-XGB_SUBSAMPLE: float = 0.8
-XGB_COLSAMPLE_BYTREE: float = 0.8
-XGB_REG_ALPHA: float = 0.1
-XGB_REG_LAMBDA: float = 1.0
-XGB_MIN_CHILD_WEIGHT: int = 5
-XGB_EARLY_STOPPING: int = 30
+LR_C: float = 1.0                   # inverse regularisation strength
+LR_PENALTY: str = "l2"              # 'l1', 'l2', or 'elasticnet'
+LR_SOLVER: str = "lbfgs"            # 'lbfgs' (L2), 'saga' (elasticnet/L1)
+LR_MAX_ITER: int = 1000
+LR_CLASS_WEIGHT: str = "balanced"   # handle residual class imbalance
 
-# ──────────────────────────────────────────────────────────────
-# Random Forest baseline hyper-parameters
-# ──────────────────────────────────────────────────────────────
-RF_N_ESTIMATORS: int = 300
-RF_MAX_DEPTH: int = 10
-RF_MIN_SAMPLES_LEAF: int = 5
+# Primary evaluation metric
+PRIMARY_METRIC: str = "roc_auc"
 
 
 @dataclass
@@ -122,21 +117,18 @@ class InjuryConfig:
     train_split: float = TRAIN_SPLIT
     val_split: float = VAL_SPLIT
 
-    # Synthetic data
+    # Augmentation
     n_synthetic_athletes: int = N_SYNTHETIC_ATHLETES
+    augmentation_method: str = AUGMENTATION_METHOD
+    target_ratio: float = TARGET_RATIO
+    smote_k_neighbors: int = SMOTE_K_NEIGHBORS
 
-    # XGBoost
-    xgb_n_estimators: int = XGB_N_ESTIMATORS
-    xgb_max_depth: int = XGB_MAX_DEPTH
-    xgb_learning_rate: float = XGB_LEARNING_RATE
-    xgb_subsample: float = XGB_SUBSAMPLE
-    xgb_colsample_bytree: float = XGB_COLSAMPLE_BYTREE
-    xgb_reg_alpha: float = XGB_REG_ALPHA
-    xgb_reg_lambda: float = XGB_REG_LAMBDA
-    xgb_min_child_weight: int = XGB_MIN_CHILD_WEIGHT
-    xgb_early_stopping: int = XGB_EARLY_STOPPING
+    # Logistic Regression
+    lr_C: float = LR_C
+    lr_penalty: str = LR_PENALTY
+    lr_solver: str = LR_SOLVER
+    lr_max_iter: int = LR_MAX_ITER
+    lr_class_weight: str = LR_CLASS_WEIGHT
 
-    # Random Forest
-    rf_n_estimators: int = RF_N_ESTIMATORS
-    rf_max_depth: int = RF_MAX_DEPTH
-    rf_min_samples_leaf: int = RF_MIN_SAMPLES_LEAF
+    # Evaluation
+    primary_metric: str = PRIMARY_METRIC

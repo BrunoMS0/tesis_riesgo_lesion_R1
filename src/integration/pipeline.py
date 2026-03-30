@@ -100,7 +100,15 @@ def load_models(cfg: IntegrationConfig):
     logger.info("R5 injury model loaded from %s (%s)",
                 cfg.injury_model_path, type(injury_model).__name__)
 
-    return fatigue_model, injury_model
+    # --- R5 Normalizer ---
+    if not os.path.isfile(cfg.normalizer_path):
+        raise RuntimeError(
+            f"R5 normalizer not found: {cfg.normalizer_path}"
+        )
+    normalizer = joblib.load(cfg.normalizer_path)
+    logger.info("R5 normalizer loaded from %s", cfg.normalizer_path)
+
+    return fatigue_model, injury_model, normalizer
 
 
 # ────────────────────────────────────────────────────────────
@@ -184,6 +192,7 @@ def merge_dfi_features(
 
 def predict_injury(
     injury_model,
+    normalizer,
     merged_df: pd.DataFrame,
     cfg: IntegrationConfig,
 ) -> Dict[str, Any]:
@@ -214,10 +223,18 @@ def predict_injury(
     logger.info("Test split: %d rows, %d features, participants=%s",
                 len(X_test), X_test.shape[1], test_pids)
 
+    # Normalize features using the fitted normalizer from R5 training
+    X_test = pd.DataFrame(
+        normalizer.transform(X_test),
+        columns=X_test.columns,
+        index=X_test.index,
+    )
+    logger.info("Test features normalised with pre-trained normalizer")
+
     # Evaluate
     eval_result = evaluate_model(
         injury_model, X_test, y_test, meta_test, icfg,
-        model_name="XGBoost_integrated",
+        model_name="LogisticRegression_integrated",
     )
 
     # Build results DataFrame
@@ -264,7 +281,7 @@ def run(cfg: Optional[IntegrationConfig] = None) -> IntegrationReport:
     logger.info("R6 STAGE 1 / 4 — LOAD PRE-TRAINED MODELS")
     logger.info("═" * 60)
     t0 = time.perf_counter()
-    fatigue_model, injury_model = load_models(cfg)
+    fatigue_model, injury_model, normalizer = load_models(cfg)
     dt = time.perf_counter() - t0
     stages.append(StageReport(
         name="LoadModels", duration_s=round(dt, 2),
@@ -310,7 +327,7 @@ def run(cfg: Optional[IntegrationConfig] = None) -> IntegrationReport:
     logger.info("R6 STAGE 4 / 4 — R5 INJURY RISK PREDICTION")
     logger.info("═" * 60)
     t0 = time.perf_counter()
-    injury_out = predict_injury(injury_model, merged_df, cfg)
+    injury_out = predict_injury(injury_model, normalizer, merged_df, cfg)
     dt = time.perf_counter() - t0
     stages.append(StageReport(
         name="InjuryPrediction", duration_s=round(dt, 2),

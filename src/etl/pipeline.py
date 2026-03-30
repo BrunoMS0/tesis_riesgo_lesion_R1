@@ -111,6 +111,14 @@ def run(cfg: Optional[PipelineConfig] = None) -> PipelineReport:
     logger.info("Transform finished in %.2fs  → %d rows, %d features",
                 dt, len(df_final), tr.metadata.get("n_features_final", "?"))
 
+    # Save feature selection report if available
+    if tr.selection_report is not None:
+        import os
+        report_path = os.path.join(cfg.output_path, "feature_selection_report.csv")
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        tr.selection_report.to_csv(report_path, index=False)
+        logger.info("Feature selection report saved to %s", report_path)
+
     # ── LOAD ──────────────────────────────────────────────
     logger.info("═" * 60)
     logger.info("STAGE 3 / 3 — LOAD")

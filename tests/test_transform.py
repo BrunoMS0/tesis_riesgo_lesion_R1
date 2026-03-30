@@ -143,12 +143,12 @@ class TestSelectFeatures:
         self, prepared, cfg: PipelineConfig
     ):
         df_s, feat_cols = prepared
-        _, final = select_features(df_s, feat_cols, cfg)
+        _, final, report = select_features(df_s, feat_cols, cfg)
         assert len(final) <= len(feat_cols)
 
     def test_target_preserved(self, prepared, cfg: PipelineConfig):
         df_s, feat_cols = prepared
-        df_sel, _ = select_features(df_s, feat_cols, cfg)
+        df_sel, _, _ = select_features(df_s, feat_cols, cfg)
         assert "is_injured" in df_sel.columns
 
 

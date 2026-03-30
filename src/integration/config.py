@@ -29,7 +29,12 @@ _DEFAULT_FATIGUE_MODEL = os.environ.get(
 
 _DEFAULT_INJURY_MODEL = os.environ.get(
     "INTEGRATION_INJURY_MODEL",
-    os.path.join(_PROJECT_ROOT, "src", "outputs", "xgboost_injury.joblib"),
+    os.path.join(_PROJECT_ROOT, "src", "outputs", "logistic_injury.joblib"),
+)
+
+_DEFAULT_NORMALIZER = os.environ.get(
+    "INTEGRATION_NORMALIZER",
+    os.path.join(_PROJECT_ROOT, "src", "outputs", "normalizer.joblib"),
 )
 
 _DEFAULT_OUTPUT = os.environ.get(
@@ -45,6 +50,7 @@ class IntegrationConfig:
     # Pre-trained model artefact paths
     fatigue_model_path: str = _DEFAULT_FATIGUE_MODEL
     injury_model_path: str = _DEFAULT_INJURY_MODEL
+    normalizer_path: str = _DEFAULT_NORMALIZER
 
     # Output directory for integration results
     output_path: str = _DEFAULT_OUTPUT
