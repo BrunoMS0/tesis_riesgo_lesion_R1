@@ -84,7 +84,7 @@ class LoadResult:
 def save_csv(
     df: pd.DataFrame,
     cfg: PipelineConfig,
-    filename: str = "dataset_modelado_R2.csv",
+    filename: str = "dataset_etl_output.csv",
 ) -> Path:
     """Write *df* to ``cfg.output_path / filename`` and return the path."""
     os.makedirs(cfg.output_path, exist_ok=True)

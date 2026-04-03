@@ -100,7 +100,7 @@ def run(cfg: Optional[PipelineConfig] = None) -> PipelineReport:
     t0 = time.perf_counter()
     tr: TransformResult = transform(df_raw, cfg)
     dt = time.perf_counter() - t0
-    df_final = tr.df_standardised   # the fully processed frame
+    df_final = tr.df_selected   # cleaned + engineered + feature-selected
     stages.append(StageReport(
         name="Transform",
         duration_s=round(dt, 2),

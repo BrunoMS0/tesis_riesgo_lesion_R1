@@ -12,9 +12,7 @@ T‑6  engineer_features: TRIMP column exists.
 T‑7  engineer_features: Sleep Debt column exists.
 T‑8  engineer_features: RHR Drift column exists.
 T‑9  engineer_features: Wellness Score ∈ [1, 7] (valid range).
-T‑10 standardise: output has zero mean / unit variance (approx).
-T‑11 standardise: PowerTransformer is returned for serialisation.
-T‑12 select_features: dropped features are fewer than total features.
+T‑10 select_features: dropped features are fewer than total features.
 T‑13 transform: full pipeline returns TransformResult.
 """
 
@@ -30,7 +28,6 @@ from src.etl.transform import (
     clean,
     engineer_features,
     select_features,
-    standardise,
     transform,
 )
 
@@ -103,31 +100,6 @@ class TestEngineerFeatures:
 
 
 # ────────────────────────────────────────────────────────────
-# Standardisation sub‑stage
-# ────────────────────────────────────────────────────────────
-class TestStandardise:
-
-    @pytest.fixture()
-    def df_feat(self, raw_df: pd.DataFrame, cfg: PipelineConfig):
-        return engineer_features(clean(raw_df, cfg), cfg)
-
-    def test_approx_zero_mean(self, df_feat: pd.DataFrame, cfg: PipelineConfig):
-        df_std, _, feat_cols = standardise(df_feat, cfg)
-        means = df_std[feat_cols].mean()
-        # After Yeo‑Johnson + standardize=True means should be ≈ 0
-        assert (means.abs() < 0.5).all(), f"Means too far from 0:\n{means}"
-
-    def test_returns_transformer(self, df_feat: pd.DataFrame, cfg: PipelineConfig):
-        _, pt, _ = standardise(df_feat, cfg)
-        assert hasattr(pt, "transform"), "Transformer must be serialisable"
-
-    def test_feat_cols_returned(self, df_feat: pd.DataFrame, cfg: PipelineConfig):
-        _, _, feat_cols = standardise(df_feat, cfg)
-        assert isinstance(feat_cols, list)
-        assert len(feat_cols) > 0
-
-
-# ────────────────────────────────────────────────────────────
 # Variable selection sub‑stage
 # ────────────────────────────────────────────────────────────
 class TestSelectFeatures:
@@ -136,19 +108,23 @@ class TestSelectFeatures:
     def prepared(self, raw_df: pd.DataFrame, cfg: PipelineConfig):
         df_c = clean(raw_df, cfg)
         df_f = engineer_features(df_c, cfg)
-        df_s, _, feat_cols = standardise(df_f, cfg)
-        return df_s, feat_cols
+        exclude = {"is_injured", "participant_id", "date"}
+        feat_cols = [
+            c for c in df_f.columns
+            if c not in exclude and df_f[c].dtype in ("float64", "int64")
+        ]
+        return df_f, feat_cols
 
     def test_features_reduced_or_equal(
         self, prepared, cfg: PipelineConfig
     ):
-        df_s, feat_cols = prepared
-        _, final, report = select_features(df_s, feat_cols, cfg)
+        df_f, feat_cols = prepared
+        _, final, report = select_features(df_f, feat_cols, cfg)
         assert len(final) <= len(feat_cols)
 
     def test_target_preserved(self, prepared, cfg: PipelineConfig):
-        df_s, feat_cols = prepared
-        df_sel, _, _ = select_features(df_s, feat_cols, cfg)
+        df_f, feat_cols = prepared
+        df_sel, _, _ = select_features(df_f, feat_cols, cfg)
         assert "is_injured" in df_sel.columns
 
 
@@ -164,5 +140,5 @@ class TestTransformFull:
         assert isinstance(result, TransformResult)
         assert result.df_cleaned is not None
         assert result.df_features is not None
-        assert result.df_standardised is not None
+        assert result.df_selected is not None
         assert len(result.feature_cols) > 0

@@ -82,7 +82,7 @@ VAL_SPLIT: float = 0.15    # test = 1 − train − val
 # ──────────────────────────────────────────────────────────────
 N_SYNTHETIC_ATHLETES: int = 32
 AUGMENTATION_METHOD: str = "smote"   # 'smote' | 'copula'
-TARGET_RATIO: float = 0.5           # minority class proportion (0.5 = 50/50)
+TARGET_RATIO: float = 0.3           # minority class proportion after SMOTE
 SMOTE_K_NEIGHBORS: int = 5
 
 # ──────────────────────────────────────────────────────────────
@@ -93,6 +93,7 @@ LR_PENALTY: str = "l2"              # 'l1', 'l2', or 'elasticnet'
 LR_SOLVER: str = "lbfgs"            # 'lbfgs' (L2), 'saga' (elasticnet/L1)
 LR_MAX_ITER: int = 1000
 LR_CLASS_WEIGHT: str = "balanced"   # handle residual class imbalance
+C_GRID: List[float] = [0.01, 0.1, 1.0, 10.0]
 
 # Primary evaluation metric
 PRIMARY_METRIC: str = "roc_auc"
@@ -129,6 +130,7 @@ class InjuryConfig:
     lr_solver: str = LR_SOLVER
     lr_max_iter: int = LR_MAX_ITER
     lr_class_weight: str = LR_CLASS_WEIGHT
+    c_grid: List[float] = field(default_factory=lambda: list(C_GRID))
 
     # Evaluation
     primary_metric: str = PRIMARY_METRIC

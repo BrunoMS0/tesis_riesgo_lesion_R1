@@ -4,7 +4,7 @@ src.etl – ETL pipeline for the PMData injury-risk prediction project.
 Stages
 ------
 1. **Extract** – read raw PMSYS + Fitbit files → consolidated DataFrame.
-2. **Transform** – clean, engineer features, standardise.
+2. **Transform** – clean, engineer features, select variables.
 3. **Load** – persist CSV + build tf.data.Dataset objects.
 
 Quick start::

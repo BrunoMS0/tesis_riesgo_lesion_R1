@@ -6,14 +6,18 @@ applies three sequential sub‑stages:
 
 1. **Clean** – null treatment, column pruning, deduplication.
 2. **Engineer** – derived features (ACWR, TRIMP, Sleep Debt, …).
-3. **Standardise** – Yeo‑Johnson power transform + z‑score.
+3. **Select** – variable selection (multicollinearity + low relevance).
+
+Note: Normalisation is intentionally **not** done here.  Each downstream
+model applies its own normaliser (MinMaxScaler for R4, Yeo-Johnson for R5)
+fit on training data only, avoiding double-normalisation and data leakage.
 
 Public API
 ----------
 transform(df_raw, cfg) -> TransformResult
 clean(df, cfg) -> pd.DataFrame
 engineer_features(df, cfg) -> pd.DataFrame
-standardise(df, cfg) -> Tuple[pd.DataFrame, PowerTransformer]
+select_features(df, feat_cols, cfg) -> Tuple[pd.DataFrame, List[str], pd.DataFrame]
 """
 
 from __future__ import annotations
@@ -42,11 +46,11 @@ class TransformResult:
 
     df_cleaned: pd.DataFrame
     df_features: pd.DataFrame
-    df_standardised: pd.DataFrame
-    transformer: PowerTransformer
+    df_selected: pd.DataFrame
     feature_cols: List[str]
     metadata: Dict = field(default_factory=dict)
     selection_report: Optional[pd.DataFrame] = None
+    transformer: Optional[PowerTransformer] = None
 
 
 # ────────────────────────────────────────────────────────────
@@ -361,23 +365,34 @@ def select_features(
 # ────────────────────────────────────────────────────────────
 
 def transform(df_raw: pd.DataFrame, cfg: PipelineConfig) -> TransformResult:
-    """Run *Clean → Engineer → Standardise → Select* in sequence."""
+    """Run *Clean → Engineer → Select* in sequence.
+
+    Normalisation is deliberately skipped here — each downstream
+    model applies its own scaler fit on training data only.
+    """
     df_clean = clean(df_raw, cfg)
     df_feat  = engineer_features(df_clean, cfg)
-    df_std, pt, feat_cols = standardise(df_feat, cfg)
-    df_sel, final_feats, selection_report = select_features(df_std, feat_cols, cfg)
+
+    # Build numeric feature list for selection (same logic as standardise)
+    exclude = {"is_injured", "participant_id", "date"}
+    feat_cols = [
+        c for c in df_feat.columns
+        if c not in exclude and df_feat[c].dtype in ("float64", "int64")
+    ]
+
+    df_sel, final_feats, selection_report = select_features(
+        df_feat, feat_cols, cfg,
+    )
 
     return TransformResult(
         df_cleaned=df_clean,
         df_features=df_feat,
-        df_standardised=df_std,
-        transformer=pt,
+        df_selected=df_sel,
         feature_cols=final_feats,
         metadata={
             "rows_after_clean": len(df_clean),
             "n_features_derived": len(df_feat.columns) - len(df_clean.columns),
             "n_features_final": len(final_feats),
-            "standardisation": "Yeo-Johnson",
         },
         selection_report=selection_report,
     )

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,8 @@ class LOSOFoldResult:
     roc_auc: float
     pr_auc: float
     f1: float
+    skipped: bool = False
+    fpr: Optional[float] = None
 
 
 @dataclass
@@ -52,6 +54,7 @@ class LOSOResult:
     mean_pr_auc: float = 0.0
     mean_f1: float = 0.0
     std_roc_auc: float = 0.0
+    n_skipped_folds: int = 0
 
 
 def loso_cross_validation(
@@ -127,7 +130,30 @@ def loso_cross_validation(
 
         n_injuries = int(y_fold_test.sum())
 
-        # Compute metrics (handle edge cases where fold has no injuries)
+        # Skip fold if held-out participant has no injuries
+        if n_injuries == 0:
+            # Only FPR is computable (no positives → AUC undefined)
+            fp = int((y_pred == 1).sum())
+            n_neg = int((y_fold_test == 0).sum())
+            fold_fpr = round(fp / max(n_neg, 1), 4)
+            fold_result = LOSOFoldResult(
+                participant_id=held_out_pid,
+                n_samples=len(y_fold_test),
+                n_injuries=0,
+                roc_auc=float("nan"),
+                pr_auc=float("nan"),
+                f1=float("nan"),
+                skipped=True,
+                fpr=fold_fpr,
+            )
+            folds.append(fold_result)
+            logger.info(
+                "Fold %d/%d [%s]: SKIPPED — 0 injuries (n=%d, FPR=%.4f)",
+                i, len(pids), held_out_pid, len(y_fold_test), fold_fpr,
+            )
+            continue
+
+        # Compute metrics
         try:
             roc_auc = roc_auc_score(y_fold_test, y_prob)
         except ValueError:
@@ -155,10 +181,18 @@ def loso_cross_validation(
                      fold_result.roc_auc, fold_result.pr_auc, fold_result.f1,
                      fold_result.n_samples, fold_result.n_injuries)
 
-    # Aggregate
-    roc_aucs = [f.roc_auc for f in folds]
-    pr_aucs = [f.pr_auc for f in folds]
-    f1s = [f.f1 for f in folds]
+    # Aggregate (only non-skipped folds)
+    valid_folds = [f for f in folds if not f.skipped]
+    n_skipped = len(folds) - len(valid_folds)
+
+    if valid_folds:
+        roc_aucs = [f.roc_auc for f in valid_folds]
+        pr_aucs = [f.pr_auc for f in valid_folds]
+        f1s = [f.f1 for f in valid_folds]
+    else:
+        roc_aucs = [0.0]
+        pr_aucs = [0.0]
+        f1s = [0.0]
 
     result = LOSOResult(
         folds=folds,
@@ -166,9 +200,12 @@ def loso_cross_validation(
         mean_pr_auc=round(float(np.mean(pr_aucs)), 4),
         mean_f1=round(float(np.mean(f1s)), 4),
         std_roc_auc=round(float(np.std(roc_aucs)), 4),
+        n_skipped_folds=n_skipped,
     )
     logger.info("LOSO complete — mean ROC-AUC=%.4f (±%.4f), "
-                "mean PR-AUC=%.4f, mean F1=%.4f",
+                "mean PR-AUC=%.4f, mean F1=%.4f  "
+                "[%d valid folds, %d skipped (0 injuries)]",
                 result.mean_roc_auc, result.std_roc_auc,
-                result.mean_pr_auc, result.mean_f1)
+                result.mean_pr_auc, result.mean_f1,
+                len(valid_folds), n_skipped)
     return result

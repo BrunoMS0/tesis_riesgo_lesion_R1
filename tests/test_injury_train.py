@@ -18,7 +18,7 @@ import pytest
 
 from src.injury.config import InjuryConfig
 from src.injury.model import build_logistic_regression, build_baseline_model
-from src.injury.train import save_model, train_injury_model, train_with_cv
+from src.injury.train import save_model, train_injury_model, train_with_cv, grid_search_C
 from src.injury.evaluate import evaluate_model
 
 
@@ -98,3 +98,15 @@ class TestSaveModel:
         path = save_model(model, str(tmp_path), "test_model")
         assert os.path.exists(path)
         assert path.endswith(".joblib")
+
+
+class TestGridSearchC:
+    def test_returns_valid_result(self, cfg, synthetic_split):
+        s = synthetic_split
+        best_C, results = grid_search_C(
+            s["X_train"], s["y_train"], s["X_val"], s["y_val"], cfg,
+        )
+        assert best_C in cfg.c_grid
+        assert list(results.columns) == ["C", "roc_auc"]
+        assert len(results) == len(cfg.c_grid)
+        assert all(results["roc_auc"].between(0.0, 1.0))

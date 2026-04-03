@@ -25,7 +25,7 @@ from .config import InjuryConfig
 from .dataset import build_injury_datasets, InjuryDatasetBundle
 from .augment import augment_training_data, validate_synthetic
 from .model import build_logistic_regression, build_baseline_model
-from .train import train_injury_model, save_model
+from .train import train_injury_model, save_model, grid_search_C
 from .evaluate import (
     EvaluationResult,
     compare_models,
@@ -161,9 +161,19 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
     logger.info("═" * 60)
     t0 = time.perf_counter()
 
-    # Logistic Regression (on augmented data)
-    lr_model = build_logistic_regression(cfg)
-    lr_model = train_injury_model(lr_model, X_aug, y_aug, cfg)
+    # Grid search over C using validation set
+    best_C, grid_results = grid_search_C(
+        X_aug, y_aug, bundle.X_val, bundle.y_val, cfg,
+    )
+    grid_results.to_csv(
+        Path(cfg.output_path) / "grid_search_C_results.csv", index=False,
+    )
+
+    # Build final LR with best C
+    from dataclasses import replace as dc_replace
+    cfg_best = dc_replace(cfg, lr_C=best_C)
+    lr_model = build_logistic_regression(cfg_best)
+    lr_model = train_injury_model(lr_model, X_aug, y_aug, cfg_best)
     save_model(lr_model, cfg.output_path, "logistic_injury")
 
     # Baseline (DummyClassifier)
@@ -174,9 +184,13 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
     stages.append(StageReport(
         name="Training",
         duration_s=round(dt, 2),
-        details={"models_trained": ["LogisticRegression", "Baseline"]},
+        details={
+            "models_trained": ["LogisticRegression", "Baseline"],
+            "best_C": best_C,
+            "grid_search": grid_results.to_dict(orient="records"),
+        },
     ))
-    logger.info("Training done in %.2fs", dt)
+    logger.info("Training done in %.2fs — best C=%.4f", dt, best_C)
 
     # ── STAGE 4: EVALUATION ──────────────────────────────
     logger.info("═" * 60)
@@ -187,6 +201,7 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
     lr_eval = evaluate_model(
         lr_model, bundle.X_test, bundle.y_test, bundle.meta_test, cfg,
         model_name="LogisticRegression",
+        X_val=bundle.X_val, y_val=bundle.y_val,
     )
     save_evaluation_report(lr_eval, cfg.output_path)
 
@@ -202,12 +217,14 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
         cols_no_dfi = [c for c in bundle.feature_columns if c != "dfi_predicted"]
         X_aug_no_dfi = X_aug[cols_no_dfi]
         X_test_no_dfi = bundle.X_test[cols_no_dfi]
+        X_val_no_dfi = bundle.X_val[cols_no_dfi]
 
         lr_ablation = build_logistic_regression(cfg)
         lr_ablation = train_injury_model(lr_ablation, X_aug_no_dfi, y_aug, cfg)
         ablation_eval = evaluate_model(
             lr_ablation, X_test_no_dfi, bundle.y_test, bundle.meta_test, cfg,
             model_name="LR_no_DFI",
+            X_val=X_val_no_dfi, y_val=bundle.y_val,
         )
         save_evaluation_report(ablation_eval, cfg.output_path)
 
@@ -239,7 +256,7 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
                           ignore_index=True)
 
     loso_result: LOSOResult = loso_cross_validation(
-        X_all, y_all, meta_all, cfg,
+        X_all, y_all, meta_all, cfg_best,
     )
 
     dt = time.perf_counter() - t0
@@ -248,6 +265,7 @@ def run(cfg: Optional[InjuryConfig] = None) -> InjuryReport:
         duration_s=round(dt, 2),
         details={
             "n_folds": len(loso_result.folds),
+            "n_skipped_folds": loso_result.n_skipped_folds,
             "mean_roc_auc": loso_result.mean_roc_auc,
             "std_roc_auc": loso_result.std_roc_auc,
             "mean_f1": loso_result.mean_f1,

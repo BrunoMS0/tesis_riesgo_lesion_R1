@@ -74,9 +74,16 @@ def evaluate_model(
     meta_test: pd.DataFrame,
     cfg: InjuryConfig,
     model_name: str = "LogisticRegression",
+    *,
+    X_val: Optional[pd.DataFrame] = None,
+    y_val: Optional[pd.Series] = None,
 ) -> EvaluationResult:
     """
     Run the full metrics suite on a trained model.
+
+    If *X_val* and *y_val* are provided the optimal classification
+    threshold is derived from the **validation** set (no data-leakage).
+    Otherwise a safe default of 0.5 is used.
 
     Returns
     -------
@@ -85,9 +92,10 @@ def evaluate_model(
     """
     y_prob = model.predict_proba(X_test)[:, 1]
 
-    # Optimal threshold from ROC curve
-    if y_test.sum() > 0 and y_test.nunique() > 1:
-        threshold = _find_optimal_threshold(y_test, y_prob)
+    # Optimal threshold — derived from validation set when available
+    if X_val is not None and y_val is not None and y_val.sum() > 0:
+        y_prob_val = model.predict_proba(X_val)[:, 1]
+        threshold = _find_optimal_threshold(y_val, y_prob_val)
     else:
         threshold = 0.5
     y_pred = (y_prob >= threshold).astype(int)

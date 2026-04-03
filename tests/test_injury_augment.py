@@ -28,7 +28,7 @@ from src.injury.augment import (
 
 @pytest.fixture()
 def cfg_smote():
-    return InjuryConfig(augmentation_method="smote", target_ratio=0.5, smote_k_neighbors=3)
+    return InjuryConfig(augmentation_method="smote", target_ratio=0.3, smote_k_neighbors=3)
 
 
 @pytest.fixture()

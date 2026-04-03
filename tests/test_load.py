@@ -23,16 +23,21 @@ from src.etl.load import (
     DatasetBundle, LoadResult, build_tf_datasets, load, save_csv,
     save_tfrecord, read_tfrecord,
 )
-from src.etl.transform import clean, engineer_features, standardise
+from src.etl.transform import clean, engineer_features, select_features
 
 
 @pytest.fixture()
 def df_processed(raw_df: pd.DataFrame, cfg: PipelineConfig):
-    """Fully processed DataFrame (clean → engineer → standardise)."""
+    """Fully processed DataFrame (clean → engineer → select)."""
     df_c = clean(raw_df, cfg)
     df_f = engineer_features(df_c, cfg)
-    df_s, _, feat_cols = standardise(df_f, cfg)
-    return df_s, feat_cols
+    exclude = {"is_injured", "participant_id", "date"}
+    feat_cols = [
+        c for c in df_f.columns
+        if c not in exclude and df_f[c].dtype in ("float64", "int64")
+    ]
+    df_sel, final_cols, _ = select_features(df_f, feat_cols, cfg)
+    return df_sel, final_cols
 
 
 # ────────────────────────────────────────────────────────────
