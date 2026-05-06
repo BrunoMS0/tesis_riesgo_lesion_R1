@@ -85,12 +85,13 @@ def main() -> None:
     report = run(cfg)
 
     # Summary
-    print("\n" + "═" * 60)
-    print("  R6 TWO-STAGE PIPELINE – EXECUTION SUMMARY")
-    print("═" * 60)
+    sep = "=" * 60
+    print(f"\n{sep}")
+    print("  R6 TWO-STAGE PIPELINE -- EXECUTION SUMMARY")
+    print(sep)
     for s in report.stages:
         print(f"  {s.name:<22s}  {s.duration_s:>7.2f}s")
-    print("─" * 60)
+    print("-" * 60)
     print(f"  Total time        : {report.total_duration_s:.2f} s")
     print(f"  DFI predictions   : {report.fatigue_summary.get('n_dfi', 0)}")
     print(f"  DFI mean / std    : "
@@ -106,7 +107,7 @@ def main() -> None:
     print(f"  Output CSV        : {report.output_csv}")
     print(f"  Fatigue model     : {report.fatigue_model_path}")
     print(f"  Injury model      : {report.injury_model_path}")
-    print("═" * 60)
+    print(sep)
 
 
 if __name__ == "__main__":

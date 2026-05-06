@@ -1,0 +1,144 @@
+17:12:27 [INFO] run_runner ù ============================================================
+17:12:27 [INFO] run_runner ù STAGE 1 ù ETL + Feature Engineering
+17:12:27 [INFO] run_runner ù ============================================================
+17:12:27 [INFO] src.runner.extract ù Loaded 42766 rows Î 73 cols from C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\Runner dataset\day_approach_maskedID_timeseries.csv
+17:12:27 [INFO] src.runner.extract ù Runner dataset: 74 athletes (63 with >=1 injury), 583 injury events (1.36% prevalence), date range 0-2673
+17:12:28 [INFO] src.runner.transform ù Feature engineering complete: 42766 rows, 18 derived features, injury prevalence=1.36% (583 events)
+17:12:28 [INFO] src.runner.dataset ù Saved processed dataset -> C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\outputs\runner_dataset_processed.csv (42766 rows)
+17:12:28 [INFO] src.runner.dataset ù Athlete split ù train: 51 (43 injured) | val: 7 (6) | test: 16 (14)
+17:12:28 [INFO] src.runner.dataset ù Row split ù train: 29574 (405+) | val: 3451 (57+) | test: 9741 (121+)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u03b1' in position 92: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 67, in _run
+    bundle = build_runner_datasets(save_processed=True)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\runner\dataset.py", line 176, in build_runner_datasets
+    normalizer = fit_normalizer(X_train)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\normalize.py", line 141, in fit_normalizer
+    logger.info("Pre-normalization KS test: %d/%d features are normal (\u03b1=%.2f)",
+Message: 'Pre-normalization KS test: %d/%d features are normal (\u03b1=%.2f)'
+Arguments: (0, 18, 0.05)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u03b1' in position 93: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 67, in _run
+    bundle = build_runner_datasets(save_processed=True)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\runner\dataset.py", line 176, in build_runner_datasets
+    normalizer = fit_normalizer(X_train)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\normalize.py", line 155, in fit_normalizer
+    logger.info("Post-normalization KS test: %d/%d features are normal (\u03b1=%.2f)",
+Message: 'Post-normalization KS test: %d/%d features are normal (\u03b1=%.2f)'
+Arguments: (0, 18, 0.05)
+17:12:30 [INFO] src.runner.dataset ù Yeo-Johnson normalisation applied (fit on train split only)
+17:12:30 [INFO] run_runner ù Dataset ready: 29574 train rows (405+), 3451 val rows (57+), 9741 test rows (121+)
+17:12:30 [INFO] run_runner ù ============================================================
+17:12:30 [INFO] run_runner ù STAGE 2 ù RF Grid Search (val AUC)
+17:12:30 [INFO] run_runner ù ============================================================
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 84: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 82, in _run
+    best_params, _gs_results = grid_search_RF(
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\train.py", line 170, in grid_search_RF
+    logger.info(
+Message: 'Grid search RF max_depth=%s min_samples_leaf=%s \u2192 val ROC-AUC=%.4f'
+Arguments: (None, 1, 0.9427033257864756)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 84: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 82, in _run
+    best_params, _gs_results = grid_search_RF(
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\train.py", line 170, in grid_search_RF
+    logger.info(
+Message: 'Grid search RF max_depth=%s min_samples_leaf=%s \u2192 val ROC-AUC=%.4f'
+Arguments: (None, 5, 0.9467093632726484)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 82: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 82, in _run
+    best_params, _gs_results = grid_search_RF(
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\train.py", line 170, in grid_search_RF
+    logger.info(
+Message: 'Grid search RF max_depth=%s min_samples_leaf=%s \u2192 val ROC-AUC=%.4f'
+Arguments: (10, 1, 0.9404521911732779)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 82: character maps to <undefined>
+Call stack:
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 82, in _run
+    best_params, _gs_results = grid_search_RF(
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\src\injury\train.py", line 170, in grid_search_RF
+    logger.info(
+Message: 'Grid search RF max_depth=%s min_samples_leaf=%s \u2192 val ROC-AUC=%.4f'
+Arguments: (10, 5, 0.9414136401699593)
+17:12:37 [INFO] src.injury.train ù Grid search RF complete ù best params={'max_depth': None, 'min_samples_leaf': 5} (ROC-AUC=0.9467)
+17:12:37 [INFO] run_runner ù Best params: {'max_depth': None, 'min_samples_leaf': 5} | val AUC = 0.9467
+17:12:37 [INFO] src.injury.model ù Built RandomForestClassifier (n_estimators=200, max_depth=None, min_samples_leaf=5, max_features=sqrt, class_weight=balanced)
+Traceback (most recent call last):
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 298, in <module>
+    main()
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 294, in main
+    _run(args)
+  File "C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\run_runner.py", line 95, in _run
+    val_metrics  = evaluate_model(best_model, bundle.X_val,  bundle.y_val)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: evaluate_model() missing 2 required positional arguments: 'meta_test' and 'cfg'

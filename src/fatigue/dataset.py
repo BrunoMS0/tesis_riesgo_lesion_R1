@@ -97,8 +97,26 @@ def compute_dfi(fatigue_series: pd.Series) -> pd.Series:
 def split_participants(
     df: pd.DataFrame, cfg: FatigueConfig,
 ) -> Tuple[List[str], List[str], List[str]]:
-    """Return (train_pids, val_pids, test_pids) with deterministic shuffle."""
+    """Return (train_pids, val_pids, test_pids).
+
+    If explicit participant lists are defined in the config
+    (train_participants / val_participants / test_participants),
+    those are used directly.  Otherwise falls back to a deterministic
+    ratio-based shuffle with ``cfg.seed``.
+    """
     pids = sorted(df["participant_id"].unique())
+
+    if cfg.train_participants and cfg.val_participants and cfg.test_participants:
+        train_pids = [p for p in cfg.train_participants if p in pids]
+        val_pids = [p for p in cfg.val_participants if p in pids]
+        test_pids = [p for p in cfg.test_participants if p in pids]
+        logger.info(
+            "Participant split (explicit) — train: %s, val: %s, test: %s",
+            train_pids, val_pids, test_pids,
+        )
+        return train_pids, val_pids, test_pids
+
+    # Fallback: ratio-based deterministic shuffle
     rng = np.random.RandomState(cfg.seed)
     rng.shuffle(pids)
 
@@ -110,8 +128,10 @@ def split_participants(
     val_pids = list(pids[n_train:n_train + n_val])
     test_pids = list(pids[n_train + n_val:])
 
-    logger.info("Participant split — train: %s, val: %s, test: %s",
-                train_pids, val_pids, test_pids)
+    logger.info(
+        "Participant split (ratio-based) — train: %s, val: %s, test: %s",
+        train_pids, val_pids, test_pids,
+    )
     return train_pids, val_pids, test_pids
 
 

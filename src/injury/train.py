@@ -128,3 +128,69 @@ def grid_search_C(
     logger.info("Grid search complete — best C=%.4f (ROC-AUC=%.4f)",
                 best_C, results.loc[best_idx, "roc_auc"])
     return best_C, results
+
+
+def grid_search_RF(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
+    cfg: InjuryConfig,
+):
+    """
+    Grid search over ``cfg.rf_param_grid`` evaluated on the validation set.
+
+    Returns
+    -------
+    best_params : dict
+        Best (max_depth, min_samples_leaf) found.
+    results : pd.DataFrame
+        Table with one row per candidate.
+    """
+    from sklearn.ensemble import RandomForestClassifier
+
+    rows = []
+    for params in cfg.rf_param_grid:
+        model = RandomForestClassifier(
+            n_estimators=cfg.rf_n_estimators,
+            max_features=cfg.rf_max_features,
+            class_weight=cfg.rf_class_weight,
+            random_state=cfg.seed,
+            n_jobs=-1,
+            **params,
+        )
+        model.fit(X_train, y_train)
+        y_prob = model.predict_proba(X_val)[:, 1]
+        try:
+            auc = roc_auc_score(y_val, y_prob)
+        except ValueError:
+            auc = 0.0
+        row = {**params, "roc_auc": round(auc, 4)}
+        rows.append(row)
+        logger.info(
+            "Grid search RF max_depth=%s min_samples_leaf=%s → val ROC-AUC=%.4f",
+            params.get("max_depth", "None"),
+            params.get("min_samples_leaf", 1),
+            auc,
+        )
+
+    results = pd.DataFrame(rows)
+    best_idx = int(results["roc_auc"].idxmax())
+    best_params = {
+        k: v for k, v in results.iloc[best_idx].to_dict().items()
+        if k != "roc_auc"
+    }
+    # Restore None for max_depth if pandas stored it as NaN
+    if "max_depth" in best_params and pd.isna(best_params["max_depth"]):
+        best_params["max_depth"] = None
+    elif "max_depth" in best_params and best_params["max_depth"] is not None:
+        best_params["max_depth"] = int(best_params["max_depth"])
+    if "min_samples_leaf" in best_params:
+        best_params["min_samples_leaf"] = int(best_params["min_samples_leaf"])
+
+    logger.info(
+        "Grid search RF complete — best params=%s (ROC-AUC=%.4f)",
+        best_params,
+        results.iloc[best_idx]["roc_auc"],
+    )
+    return best_params, results

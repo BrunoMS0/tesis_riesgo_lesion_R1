@@ -199,12 +199,57 @@ def compute_coefficient_importance(
     return importance
 
 
+def compute_feature_importance(
+    model,
+    feature_names: List[str],
+) -> pd.DataFrame:
+    """
+    Generic feature importance extractor — dispatches on model type.
+
+    For RandomForestClassifier: uses ``feature_importances_`` (mean decrease impurity).
+    For LogisticRegression: uses absolute coefficient magnitude.
+
+    Returns
+    -------
+    DataFrame with columns [feature, importance, abs_importance],
+    sorted descending by abs_importance.
+    """
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.linear_model import LogisticRegression as _LR
+
+    if isinstance(model, RandomForestClassifier):
+        imps = model.feature_importances_
+        col_name = "importance"
+        label = "RF feature importance (MDI)"
+    elif isinstance(model, _LR):
+        imps = np.abs(model.coef_[0])
+        col_name = "importance"
+        label = "LR |coefficient|"
+    else:
+        raise TypeError(f"Unsupported model type: {type(model).__name__}")
+
+    df = pd.DataFrame({
+        "feature": feature_names,
+        col_name: imps,
+        "abs_importance": np.abs(imps),
+    }).sort_values("abs_importance", ascending=False).reset_index(drop=True)
+
+    logger.info(
+        "%s — top feature: %s (importance=%.4f)",
+        label,
+        df.iloc[0]["feature"],
+        df.iloc[0]["abs_importance"],
+    )
+    return df
+
+
 def save_coefficient_plot(
     importance_df: pd.DataFrame,
     output_path: str,
     top_n: int = 20,
+    title: str = "Feature Importance (Top %d)",
 ) -> str:
-    """Save a horizontal bar plot of top coefficient magnitudes."""
+    """Save a horizontal bar plot of top feature importances."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -212,14 +257,20 @@ def save_coefficient_plot(
     Path(output_path).mkdir(parents=True, exist_ok=True)
     fig_path = os.path.join(output_path, "coefficient_importance.png")
 
-    df_plot = importance_df.head(top_n).sort_values("abs_coefficient")
-    colors = ["#d62728" if c < 0 else "#2ca02c"
-              for c in df_plot["coefficient"]]
+    # Support both coefficient (signed) and generic importance (unsigned)
+    value_col = "coefficient" if "coefficient" in importance_df.columns else "importance"
+    df_plot = importance_df.head(top_n).sort_values("abs_importance")
+
+    if value_col == "coefficient":
+        colors = ["#d62728" if c < 0 else "#2ca02c"
+                  for c in df_plot[value_col]]
+    else:
+        colors = "#2ca02c"
 
     fig, ax = plt.subplots(figsize=(10, max(6, top_n * 0.35)))
-    ax.barh(df_plot["feature"], df_plot["coefficient"], color=colors)
-    ax.set_xlabel("Coefficient value")
-    ax.set_title("Logistic Regression – Feature Coefficients (Top %d)" % top_n)
+    ax.barh(df_plot["feature"], df_plot[value_col], color=colors)
+    ax.set_xlabel(value_col.replace("_", " ").title())
+    ax.set_title(title % top_n)
     plt.tight_layout()
     plt.savefig(fig_path, dpi=150, bbox_inches="tight")
     plt.close()

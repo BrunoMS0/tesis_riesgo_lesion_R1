@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from src.injury.config import InjuryConfig
-from src.injury.model import build_logistic_regression, build_baseline_model
+from src.injury.model import build_logistic_regression, build_baseline_model, build_random_forest
 from src.injury.train import save_model, train_injury_model, train_with_cv, grid_search_C
 from src.injury.evaluate import evaluate_model
 
@@ -110,3 +110,77 @@ class TestGridSearchC:
         assert list(results.columns) == ["C", "roc_auc"]
         assert len(results) == len(cfg.c_grid)
         assert all(results["roc_auc"].between(0.0, 1.0))
+
+
+# ────────────────────────────────────────────────────────────
+# Tests — RF-11 cross-domain model (wellness+load, z-scored)
+# ────────────────────────────────────────────────────────────
+
+class TestRF11CrossDomainModel:
+    """
+    Smoke tests for the RF-11 model used in cross-domain SoccerMon evaluation.
+    Verifies that a RandomForest trained on only the 11 shared features
+    (no wearables) produces finite AUC on a held-out set.
+    """
+
+    @pytest.fixture()
+    def cfg_rf(self):
+        from src.injury.config import SOCCERMON_SHARED_FEATURES
+        return InjuryConfig(
+            model_type="rf",
+            feature_columns=list(SOCCERMON_SHARED_FEATURES),
+            use_per_athlete_zscore=True,
+            zscore_features=list(SOCCERMON_SHARED_FEATURES),
+        )
+
+    @pytest.fixture()
+    def split_11(self):
+        """Synthetic split using exactly the 11 shared features."""
+        from src.injury.config import SOCCERMON_SHARED_FEATURES
+        rng = np.random.RandomState(55)
+        features = list(SOCCERMON_SHARED_FEATURES)
+        n_tr, n_v, n_te = 200, 50, 50
+
+        def _make(n, pids):
+            X = pd.DataFrame({f: rng.randn(n) for f in features})
+            y = pd.Series((rng.rand(n) > 0.88).astype(int))
+            meta = pd.DataFrame({
+                "participant_id": np.random.choice(pids, n),
+                "date": pd.date_range("2020-01-01", periods=n),
+            })
+            return X, y, meta
+
+        X_tr, y_tr, m_tr = _make(n_tr, ["p01", "p02", "p03"])
+        X_v, y_v, m_v   = _make(n_v, ["p04"])
+        X_te, y_te, m_te = _make(n_te, ["p05"])
+
+        return {
+            "X_train": X_tr, "y_train": y_tr, "meta_train": m_tr,
+            "X_val": X_v, "y_val": y_v, "meta_val": m_v,
+            "X_test": X_te, "y_test": y_te, "meta_test": m_te,
+        }
+
+    def test_rf11_trains_and_predicts(self, cfg_rf, split_11):
+        """RF-11 must fit without error and produce finite probabilities."""
+        s = split_11
+        model = build_random_forest(cfg_rf)
+        model = train_injury_model(model, s["X_train"], s["y_train"], cfg_rf)
+        proba = model.predict_proba(s["X_test"])[:, 1]
+        assert np.all(np.isfinite(proba))
+
+    def test_rf11_auc_finite(self, cfg_rf, split_11):
+        """RF-11 evaluation metrics (incl. roc_auc) must all be finite."""
+        s = split_11
+        model = build_random_forest(cfg_rf)
+        model = train_injury_model(model, s["X_train"], s["y_train"], cfg_rf)
+        result = evaluate_model(model, s["X_test"], s["y_test"], s["meta_test"], cfg_rf)
+        for k, v in result.metrics.items():
+            assert np.isfinite(v), f"RF-11 metric '{k}' is not finite: {v}"
+
+    def test_rf11_feature_count(self, cfg_rf, split_11):
+        """Trained RF-11 must use exactly 11 input features."""
+        from src.injury.config import SOCCERMON_SHARED_FEATURES
+        s = split_11
+        model = build_random_forest(cfg_rf)
+        model.fit(s["X_train"], s["y_train"])
+        assert model.n_features_in_ == len(SOCCERMON_SHARED_FEATURES)

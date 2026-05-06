@@ -1,12 +1,15 @@
 """
 model.py – Model factories for R5 Injury Risk Prediction.
 
-Provides factory functions that build a configured Logistic Regression
-classifier and a dummy baseline for comparison.
+Provides factory functions that build a configured classifier and a
+dummy baseline for comparison.  Supports both Logistic Regression
+(interpretable, linear) and Random Forest (non-linear, higher capacity).
 
 Public API
 ----------
 build_logistic_regression(cfg) -> LogisticRegression
+build_random_forest(cfg, **kwargs) -> RandomForestClassifier
+build_model(cfg, **kwargs) -> classifier
 build_baseline_model(cfg) -> DummyClassifier
 """
 
@@ -15,6 +18,7 @@ from __future__ import annotations
 import logging
 
 from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
 from .config import InjuryConfig
@@ -53,3 +57,38 @@ def build_baseline_model(cfg: InjuryConfig) -> DummyClassifier:
     )
     logger.info("Built DummyClassifier (strategy=stratified)")
     return model
+
+
+def build_random_forest(cfg: InjuryConfig, **kwargs) -> RandomForestClassifier:
+    """
+    Construct and return a configured RandomForestClassifier.
+
+    Optional ``kwargs`` (max_depth, min_samples_leaf, …) override
+    the corresponding config defaults.
+    """
+    params = {
+        "n_estimators": cfg.rf_n_estimators,
+        "max_features": cfg.rf_max_features,
+        "class_weight": cfg.rf_class_weight,
+        "random_state": cfg.seed,
+        "n_jobs": -1,
+    }
+    params.update(kwargs)
+    model = RandomForestClassifier(**params)
+    logger.info(
+        "Built RandomForestClassifier (n_estimators=%d, max_depth=%s, "
+        "min_samples_leaf=%s, max_features=%s, class_weight=%s)",
+        params["n_estimators"],
+        params.get("max_depth", "None"),
+        params.get("min_samples_leaf", 1),
+        params["max_features"],
+        params["class_weight"],
+    )
+    return model
+
+
+def build_model(cfg: InjuryConfig, **kwargs):
+    """Dispatcher: returns the model configured by ``cfg.model_type``."""
+    if cfg.model_type == "rf":
+        return build_random_forest(cfg, **kwargs)
+    return build_logistic_regression(cfg)

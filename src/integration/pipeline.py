@@ -76,7 +76,7 @@ def load_models(cfg: IntegrationConfig):
     RuntimeError
         If either model file does not exist or cannot be loaded.
     """
-    import tensorflow as tf
+    import keras
     from src.fatigue.model import TemporalAttention
 
     # --- R4 Fatigue model ---
@@ -84,7 +84,7 @@ def load_models(cfg: IntegrationConfig):
         raise RuntimeError(
             f"R4 fatigue model not found: {cfg.fatigue_model_path}"
         )
-    fatigue_model = tf.keras.models.load_model(
+    fatigue_model = keras.saving.load_model(
         cfg.fatigue_model_path,
         custom_objects={"TemporalAttention": TemporalAttention},
     )
@@ -207,21 +207,28 @@ def predict_injury(
         ``results``  – DataFrame with predictions
         ``n_test``   – number of test rows
     """
-    from src.injury.dataset import prepare_features, split_participants
+    from src.injury.dataset import prepare_features
     from src.injury.evaluate import evaluate_model
 
     icfg = cfg.injury_cfg
     X, y, meta = prepare_features(merged_df, icfg)
-    train_pids, val_pids, test_pids = split_participants(merged_df, icfg)
 
-    # Test-set subset
-    test_mask = meta["participant_id"].isin(test_pids)
-    X_test = X.loc[test_mask].reset_index(drop=True)
-    y_test = y.loc[test_mask].reset_index(drop=True)
-    meta_test = meta.loc[test_mask].reset_index(drop=True)
+    # Integration pipeline is inference-only — predict on all participants.
+    # split_participants is not used here because test_participants=[] in the
+    # default InjuryConfig (SoccerMon is the external test set for R5).
+    X_test = X.reset_index(drop=True)
+    y_test = y.reset_index(drop=True)
+    meta_test = meta.reset_index(drop=True)
+    test_pids = list(meta_test["participant_id"].unique())
 
-    logger.info("Test split: %d rows, %d features, participants=%s",
-                len(X_test), X_test.shape[1], test_pids)
+    logger.info("Inference on all %d participants: %d rows, %d features",
+                len(test_pids), len(X_test), X_test.shape[1])
+
+    # Fill any remaining NaN values with column medians before normalizing
+    nan_cols = X_test.columns[X_test.isna().any()].tolist()
+    if nan_cols:
+        logger.info("Imputing %d NaN columns with median: %s", len(nan_cols), nan_cols)
+        X_test = X_test.fillna(X_test.median())
 
     # Normalize features using the fitted normalizer from R5 training
     X_test = pd.DataFrame(

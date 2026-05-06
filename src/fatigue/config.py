@@ -88,6 +88,15 @@ SEED: int = 42
 TRAIN_SPLIT: float = 0.70
 VAL_SPLIT: float = 0.15     # test = 1 − train − val
 
+# Explicit participant lists — must match R5 (injury) split exactly
+# so that DFI predictions for test participants are never contaminated
+# by R4 training on those same participants.
+TRAIN_PARTICIPANTS: List[str] = [
+    "p01", "p03", "p05", "p06", "p08", "p09", "p10", "p12", "p13",
+]
+VAL_PARTICIPANTS: List[str] = ["p02", "p16"]
+TEST_PARTICIPANTS: List[str] = ["p04", "p07", "p11", "p14", "p15"]
+
 # ──────────────────────────────────────────────────────────────
 # tf.data parameters
 # ──────────────────────────────────────────────────────────────
@@ -136,6 +145,12 @@ class FatigueConfig:
     # Splits
     train_split: float = TRAIN_SPLIT
     val_split: float = VAL_SPLIT
+    train_participants: List[str] = field(
+        default_factory=lambda: list(TRAIN_PARTICIPANTS))
+    val_participants: List[str] = field(
+        default_factory=lambda: list(VAL_PARTICIPANTS))
+    test_participants: List[str] = field(
+        default_factory=lambda: list(TEST_PARTICIPANTS))
 
     # tf.data
     batch_size: int = BATCH_SIZE

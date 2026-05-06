@@ -16,7 +16,7 @@ from typing import Dict, List
 # ──────────────────────────────────────────────────────────────
 _DEFAULT_RAW_DATA = os.environ.get(
     "PMDATA_RAW_PATH",
-    r"C:\Users\brunoabc\Downloads\pmdata\pmdata",
+    r"C:\Users\brunoabc\Desktop\tesis\tesis_riesgo_lesion_R1\pmdata\pmdata",
 )
 _DEFAULT_OUTPUT = os.environ.get(
     "ETL_OUTPUT_PATH",

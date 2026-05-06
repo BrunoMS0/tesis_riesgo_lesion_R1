@@ -25,7 +25,7 @@ from sklearn.metrics import (
 )
 
 from .config import InjuryConfig
-from .model import build_logistic_regression
+from .model import build_logistic_regression, build_model
 from .normalize import apply_normalizer, fit_normalizer
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,8 @@ class LOSOResult:
     mean_pr_auc: float = 0.0
     mean_f1: float = 0.0
     std_roc_auc: float = 0.0
+    std_pr_auc: float = 0.0
+    std_f1: float = 0.0
     n_skipped_folds: int = 0
 
 
@@ -121,7 +123,7 @@ def loso_cross_validation(
                                i, held_out_pid, exc)
 
         # Build and train model
-        model = build_logistic_regression(cfg)
+        model = build_model(cfg)
         model.fit(X_fold_train, y_fold_train)
 
         # Predict probabilities on held-out participant
@@ -200,6 +202,8 @@ def loso_cross_validation(
         mean_pr_auc=round(float(np.mean(pr_aucs)), 4),
         mean_f1=round(float(np.mean(f1s)), 4),
         std_roc_auc=round(float(np.std(roc_aucs)), 4),
+        std_pr_auc=round(float(np.std(pr_aucs)), 4),
+        std_f1=round(float(np.std(f1s)), 4),
         n_skipped_folds=n_skipped,
     )
     logger.info("LOSO complete — mean ROC-AUC=%.4f (±%.4f), "

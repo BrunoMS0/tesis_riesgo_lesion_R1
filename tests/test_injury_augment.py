@@ -61,23 +61,23 @@ def training_data():
 class TestApplySmote:
     def test_augmented_has_more_rows(self, training_data, cfg_smote):
         X, y, meta = training_data
-        X_aug, y_aug = apply_smote(X, y, cfg_smote)
+        X_aug, y_aug = apply_smote(X, y, meta, cfg_smote)
         assert len(X_aug) >= len(X)
 
     def test_target_remains_binary(self, training_data, cfg_smote):
         X, y, meta = training_data
-        _, y_aug = apply_smote(X, y, cfg_smote)
+        _, y_aug = apply_smote(X, y, meta, cfg_smote)
         assert set(y_aug.unique()).issubset({0, 1})
 
     def test_feature_columns_preserved(self, training_data, cfg_smote):
         X, y, meta = training_data
-        X_aug, _ = apply_smote(X, y, cfg_smote)
+        X_aug, _ = apply_smote(X, y, meta, cfg_smote)
         assert list(X_aug.columns) == list(X.columns)
 
     def test_minority_class_increased(self, training_data, cfg_smote):
         X, y, meta = training_data
         original_minority = (y == 1).sum()
-        _, y_aug = apply_smote(X, y, cfg_smote)
+        _, y_aug = apply_smote(X, y, meta, cfg_smote)
         new_minority = (y_aug == 1).sum()
         assert new_minority > original_minority
 
