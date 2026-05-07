@@ -6,7 +6,7 @@ Este capítulo tiene como finalidad presentar los resultados obtenidos para el s
 
 El desarrollo de modelos predictivos en el dominio de las ciencias del deporte presenta desafíos específicos que trascienden la selección del algoritmo: la naturaleza temporal de los datos fisiológicos, el severo desbalance de clases inherente a la baja prevalencia de lesiones, la heterogeneidad entre participantes y la necesidad de garantizar la ausencia de fuga de datos entre conjuntos de entrenamiento y evaluación. Estos desafíos condicionan las decisiones metodológicas adoptadas en cada uno de los tres resultados desarrollados en este capítulo.
 
-El insumo principal para el desarrollo de este objetivo es el dataset curado producido en el Capítulo 4 (O1), el cual contiene 2,398 observaciones diarias de 16 corredores con 49 variables, incluyendo métricas fisiológicas de sensores Fitbit, registros subjetivos de bienestar (PMSYS) y características derivadas mediante ingeniería de features. Este dataset se consume en dos formatos complementarios: un archivo CSV para el preprocesamiento y particionado, y archivos TFRecord para el entrenamiento eficiente con TensorFlow.
+El insumo principal para las Secciones 5.2.1 a 5.2.3 es el dataset curado producido en el Capítulo 4 (O1), el cual contiene 2,398 observaciones diarias de 16 corredores con 49 variables, incluyendo métricas fisiológicas de sensores Fitbit, registros subjetivos de bienestar (PMSYS) y características derivadas mediante ingeniería de features. Este dataset se consume en dos formatos complementarios: un archivo CSV para el preprocesamiento y particionado, y archivos TFRecord para el entrenamiento eficiente con TensorFlow. Adicionalmente, la Sección 5.2.4 documenta el sistema M1 → M2 implementado sobre el **Runner Dataset** (74 atletas, 42,766 observaciones, 583 eventos de lesión), que constituye el dataset de mayor escala de la tesis; su validación completa se presenta en la Sección 6.2.4 del Capítulo 6.
 
 El enfoque metodológico adoptado comprende tres fases que se materializan en los tres resultados del objetivo: (1) el diseño e implementación de un modelo de Deep Learning basado en redes LSTM bidireccionales con mecanismo de atención, destinado a estimar un índice dinámico de fatiga (DFI) a partir de series temporales de 14 días; (2) el diseño e implementación de un modelo de regresión logística con técnicas de sobremuestreo, normalización y validación cruzada por sujeto, destinado a predecir el riesgo diario de lesión incorporando el DFI estimado como variable de entrada; y (3) la implementación de un pipeline de integración que orquesta la ejecución secuencial de ambos modelos y materializa el sistema predictivo completo.
 
@@ -161,6 +161,65 @@ Tabla 5.4. Distribución de pruebas unitarias del sistema de integración (R6).
 | Total | 21 | |
 
 Como medio de verificación de este resultado, el script de integración y los módulos asociados se encuentran alojados en un repositorio de control de versiones (Anexo S), y el catálogo completo de 21 pruebas unitarias de integración se documenta en el Anexo T. Como indicador objetivamente verificable, el script de integración "run_integration.py" se ejecuta de manera exitosa y sin errores sobre el conjunto de datos de prueba, produciendo todas las salidas esperadas.
+
+---
+
+### 5.2.4 Sistema predictivo sobre el Runner Dataset: Modelo M1 (Regresor de Fatiga) y Modelo M2 (Clasificador de Lesión RF)
+
+Como extensión central de la arquitectura implementada para PMData, se desarrolló una versión del sistema predictivo adaptada al **Runner Dataset** (74 atletas, 42,766 observaciones), que constituye el dataset primario de la tesis. La arquitectura sigue el mismo principio de orquestación M1 → M2, pero adopta algoritmos y protocolos de validación apropiados para la mayor escala del dataset.
+
+#### Modelo M1 — Regresor de Fatiga (Random Forest Regressor)
+
+**Propósito y diseño.** A diferencia del modelo R4 (BiLSTM), el Modelo M1 estima la percepción de recuperación diaria del atleta (`perceived_recovery.6`, escala [0, 1]) a partir exclusivamente de las 10 features GPS objetivas descritas en la Tabla 4.5 del Capítulo 4. El modelo adopta un **Random Forest Regressor** (RF) en lugar de LSTM por tres razones: (1) las 10 features ya son agregados de 7 días, eliminando la necesidad de modelar dependencias secuenciales explícitas; (2) los Random Forests son más robustos ante el tamaño reducido del conjunto de entrenamiento de cada fold LOAO; y (3) el RF no requiere secuencias de longitud fija, simplificando el pipeline.
+
+**Variables excluidas del entrenamiento.** Los días de descanso (donde `perceived exertion = -0.01`) se excluyen del conjunto de entrenamiento de M1: el modelo solo aprende de días con actividad real. Esto evita que el regresor aprenda el valor constante de descanso (-0.01) como señal de recuperación. El target se extrae directamente del CSV crudo (antes de la imputación por forward-fill de `compute_features()`), preservando los valores NaN en días de descanso.
+
+**Hiperparámetros del modelo.** La Tabla 5.5 resume la configuración del RF Regressor M1.
+
+Tabla 5.5. Hiperparámetros del Random Forest Regressor M1.
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| `n_estimators` | 200 | Balance capacidad-varianza |
+| `max_depth` | 10 | Evita sobreajuste en folds con pocos datos |
+| `min_samples_leaf` | 5 | Regularización implícita |
+| `random_state` | 42 | Reproducibilidad |
+| `n_jobs` | −1 | Paralelización completa |
+
+**Protocolo de validación LOAO.** Se utiliza **Leave-One-Athlete-Out (LOAO)** con 74 folds (uno por atleta): para cada fold, se entrena en los 73 atletas restantes con normalización Yeo-Johnson por fold, y se evalúa en el atleta reservado. El LOAO simula el escenario de predicción para un atleta nuevo no visto durante el entrenamiento.
+
+**Generación de predicciones para M2.** En el mismo pasada LOAO que sirve para la evaluación de M1, se generan predicciones de recuperación para TODOS los registros del atleta reservado. Esto garantiza que las predicciones de M1 disponibles para M2 sean siempre out-of-sample: el atleta i nunca fue visto por el modelo que genera sus predicciones.
+
+Los artefactos generados incluyen:
+- `src/outputs/rf_fatigue_runner_model.pkl` — modelo final entrenado en los 31,287 días de entrenamiento activo (todos los atletas)
+- `src/outputs/runner_fatigue_predictions_loao.csv` — predicciones LOAO de recuperación para los 42,766 registros
+- `src/outputs/fatigue_feature_importance.csv` — importancia relativa de cada feature GPS
+
+#### Modelo M2 — Clasificador de Lesión (Random Forest Classifier)
+
+**Propósito y diseño.** El Modelo M2 predice la probabilidad de lesión a partir de las 18 features derivadas del Runner Dataset (incluidas en el dataset procesado), con la opción de incorporar el `fatigue_score_predicted` generado por M1 como variable adicional. Se adopta un **Random Forest Classifier** con la configuración de la Tabla 5.6.
+
+Tabla 5.6. Hiperparámetros del Random Forest Classifier M2.
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| `n_estimators` | 200 | Estabilidad del ensemble |
+| `max_features` | `sqrt` | Descorelación de árboles |
+| `class_weight` | `balanced` | Compensa el 1.36% de prevalencia |
+| `min_samples_leaf` | 1 | Máxima expresividad |
+| `max_depth` | None | Sin poda preestablecida |
+| `random_state` | 42 | Reproducibilidad |
+
+**Augmentación SMOTE por fold.** Dentro de cada fold LOAO, se aplica SMOTE (Synthetic Minority Over-sampling Technique) con `target_ratio=0.15` y `k_neighbors=5` sobre los datos de entrenamiento normalizados. Adicionalmente, se aplica downsampling controlado para que ningún atleta aporte más de 21 muestras positivas, previniendo el dominio de atletas con alta tasa de lesión.
+
+**Normalización por fold.** La transformación Yeo-Johnson se ajusta exclusivamente sobre los datos de entrenamiento del fold y se aplica al fold de prueba, evitando la fuga de información entre atletas.
+
+Los artefactos generados incluyen:
+- `src/outputs/rf_runner_model.pkl` — clasificador entrenado en los 18 features originales (sin M1)
+- `src/outputs/loao_runner_v2_results.csv` — resultados LOAO del M2 con 11 features (10 GPS + fatigue_score_predicted)
+- `src/outputs/ablation_fatigue_runner.csv` — tabla de ablación completa (ver Capítulo 6)
+
+**Pipeline de inferencia M1 → M2.** El flujo de inferencia completo aplica M1 sobre las features GPS del día actual para obtener `fatigue_score_predicted`, y luego concatena este valor a las 10 GPS features para producir el vector de 11 features de entrada a M2. Este pipeline reproduciría el flujo de un sistema de alerta en tiempo real donde el atleta no necesita reportar subjetivamente su recuperación.
 
 ## 5.3 Discusión
 

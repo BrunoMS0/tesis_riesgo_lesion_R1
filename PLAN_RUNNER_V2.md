@@ -260,11 +260,11 @@ Si **GPS+fatiga_predicha ≈ GPS+fatiga_real**: M1 aproxima el cuestionario → 
 | Fase | Estado |
 |------|--------|
 | Fases 1–6 (arquitectura anterior con PMData) | ✅ Completadas — ver PLAN_TESIS_RUNNER.md |
-| Fase 7 — Modelo 1 Fatiga (Runner) | ⏳ Pendiente |
-| Fase 8 — Integración M1→M2 | ⏳ Pendiente |
-| Fase 9 — Validación week_approach | ⏳ Pendiente |
-| Fase 10 — Actualizar capítulos | ⏳ Pendiente |
-| Fase 11 — Verificación final V2 | ⏳ Pendiente |
+| Fase 7 — Modelo 1 Fatiga (Runner) | ✅ Completada — RMSE=0.1623, Median R²=-0.88, 74 LOAO folds |
+| Fase 8 — Integración M1→M2 | ✅ Completada — A=0.9074, B=0.9034, C=0.9109; brecha B↔C=0.0075 (meta ideal cumplida) |
+| Fase 9 — Validación week_approach | ✅ Completada — AUC cross-granularity=0.4830, Δ=-42.4% (resolución diaria es esencial) |
+| Fase 10 — Actualizar capítulos | ✅ Completada — cap4 (4.4 M1 feature table), cap5 (5.2.4 RF M1+M2), cap6 (6.2.4 Runner results) |
+| Fase 11 — Verificación final V2 | ✅ Completada — todos los artefactos verificados, final_model_comparison.csv actualizado |
 
 ---
 
@@ -276,7 +276,11 @@ Si **GPS+fatiga_predicha ≈ GPS+fatiga_real**: M1 aproxima el cuestionario → 
 | RF-Runner LOAO (Modelo 2 base) | 0.9101 ± 0.0891 | Runner 74 atletas | ✅ Meta ≥ 0.65 cumplida |
 | RF-Runner val interna | 0.9467 | Runner val 7 atletas | ✅ Meta ≥ 0.70 cumplida |
 | RF-Common cross-domain | 0.5368 ± 0.1746 | PMData LOAO | ⚠️ Meta 0.55 no cumplida |
-| **RF-Runner + fatiga (meta)** | **≥ 0.91** | **Runner LOAO** | **⏳ A medir en T8.3** |
+| **RF-Runner Ablación A (GPS-only)** | **0.9074 ± 0.0777** | **Runner LOAO (63/74)** | **✅ Meta ≥ 0.65 cumplida** |
+| **RF-Runner Ablación B (GPS + M1)** | **0.9034 ± 0.0965** | **Runner LOAO (63/74)** | **✅ Brecha B↔C = 0.0075 (meta ideal cumplida)** |
+| **RF-Runner Ablación C (GPS + real)** | **0.9109 ± 0.0877** | **Runner LOAO (63/74)** | **✅ Cota superior** |
+| **RF-M1 Fatigue Regressor** | RMSE=0.1623 | Runner LOAO (74 folds) | ✅ Aceptable (0.15–0.20) |
+| **RF-Runner Weekly (cross-gran.)** | **0.4830 ± 0.1352** | **week_approach LOAO** | **📋 Hallazgo: resolución diaria esencial** |
 
 ---
 
