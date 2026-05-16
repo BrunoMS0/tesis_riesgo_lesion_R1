@@ -46,3 +46,15 @@ Herramientas, métodos y procedimientos de los resultados:
 
   * Herramientas: LaTeX
   * Método y Procedimiento: Reporte Técnico y Análisis de Resultados
+
+* **R10:** Un análisis de la importancia de características (feature importance) para la predicción de lesiones.
+
+  * Herramientas: SHAP (SHapley Additive exPlanations)
+
+  * Método y Procedimiento: Análisis de Interpretabilidad de Modelos (XAI)
+
+* **R11:** Una validación comparativa del rendimiento del modelo integrado frente a un modelo base.
+
+  * Herramientas: Python, Google Sheets, Matplotlib, Google Drive
+
+  * Método y Procedimiento: Benchmarking de Modelos, Pruebas de Hipótesis

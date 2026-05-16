@@ -129,27 +129,13 @@ Informe de calidad de datos. Se elaboró un informe de calidad (Data Quality Rep
 
 Como medio de verificación de este resultado, se presenta el informe de calidad de datos en el Anexo H. Como indicador objetivamente verificable, se confirma que: (1) el dataset cumple con el 100% de la estructura y las variables definidas en el documento de Feature Engineering (R1), conteniendo las 33 variables documentadas; y (2) la variable objetivo "is_injured" presenta un 0% de valores nulos en las 2,398 observaciones.
 
-## 4.3 Discusión
+## 4.3 Dataset primario para el sistema predictivo: Runner Dataset (Löwdal et al., 2021)
 
-Se llevaron a cabo tres resultados esperados para lograr el objetivo de construir un dataset multimodal para el análisis de fatiga y lesiones en corredores. Para el primer resultado (R1), se desarrolló un modelo de datos formalizado mediante un análisis exploratorio que definió 33 variables — 16 originales provenientes de las fuentes de datos y 17 características derivadas mediante ingeniería de features —, cada una respaldada por evidencia de la literatura científica en ciencias del deporte. Los análisis estadísticos realizados (normalidad, correlación, multicolinealidad y PCA) proporcionaron la fundamentación cuantitativa necesaria para las decisiones de selección de variables.
+Con el propósito de superar la limitación de tamaño muestral del dataset PMData (16 atletas, 9 con lesiones), se adoptó como dataset principal para el entrenamiento y validación del sistema predictivo el Runner Dataset publicado por Löwdal et al. (2021), disponible públicamente en el repositorio asociado a su trabajo. A diferencia del PMData — que emplea sensores vestibles Fitbit Versa 2 y la plataforma PMSYS —, el Runner Dataset proviene de relojes GPS de running (Garmin/Polar) y cuestionarios subjetivos de entrenamiento diario, lo que lo hace más representativo del perfil de corredor recreacional con tecnología accesible.
 
-Para el segundo resultado (R2), se implementó un pipeline ETL automatizado que traduce las decisiones del análisis exploratorio en un proceso reproducible, modular y verificable. El pipeline fue validado mediante un plan de pruebas de 37 tests unitarios, todos ejecutados exitosamente. Para el tercer resultado (R3), se generó y validó el dataset final mediante un informe de calidad y una comparación estadística con los cálculos exploratorios, confirmando la fidelidad del proceso automatizado.
+Descripción del dataset. El Runner Dataset comprende datos longitudinales de 74 corredores seguidos durante períodos de entre 7 meses y 2 años, con 583 eventos de lesión documentados y una prevalencia del 1.36% (583 eventos positivos de 42,766 observaciones totales). Los datos se presentan en formato tabular de 73 columnas mediante un esquema de *7-day window wide format*: cada fila representa el resumen de 7 días anteriores de entrenamiento y bienestar para un atleta en una fecha dada. Las 10 variables base disponibles son: "total km" (distancia total diaria), "km Z3-4" (km en zona umbral anaeróbico), "km Z5-T1-T2" (km en zona de alta intensidad/intervalos), "km sprinting" (km de sprint), "nr. sessions" (número de sesiones), "strength training" (sesión de fuerza, binaria), "hours alternative" (horas de entrenamiento cruzado), "perceived exertion", "perceived recovery" y "perceived trainingSuccess". Cada variable tiene 7 columnas representando los días D-7 a D-1 (sufijos vacío, ".1", ".2", ..., ".6"). La variable objetivo "injury" es ya prospectiva (lesión que ocurrirá en los próximos días), por lo que no requiere desplazamiento temporal adicional.
 
-Tres decisiones de diseño merecen particular reflexión. En primer lugar, la normalización fue deliberadamente excluida del pipeline ETL. Esta decisión, aunque poco convencional en pipelines ETL tradicionales, responde a la necesidad de que cada modelo predictivo ajuste su propio normalizador exclusivamente sobre datos de entrenamiento, evitando la doble normalización y la fuga de datos. En segundo lugar, la selección de variables adoptó un criterio conservador de consenso triple (Spearman, Pearson y ANOVA F-test), lo cual reduce el riesgo de descartar variables potencialmente informativas a costa de retener un espacio de features ligeramente mayor. En tercer lugar, la partición de datos se realizó por participante en lugar de por observación individual, lo cual simula un escenario realista de despliegue en el que el modelo debe predecir para corredores no vistos durante el entrenamiento.
-
-El trabajo desarrollado presenta ciertas limitaciones que se reconocen explícitamente. El tamaño de la muestra (16 participantes) restringe la generalización de los resultados y limita la potencia estadística de la validación por participante. El desbalance de clases (3% de prevalencia de lesión) constituye un reto significativo para el entrenamiento de modelos predictivos, lo cual será abordado mediante técnicas de sobremuestreo en el Capítulo 5. Asimismo, las variables de bienestar subjetivo (fatiga, ánimo, dolor, estrés) no lograron normalidad tras la transformación Yeo-Johnson, lo cual se atribuye a su naturaleza ordinal (escala Likert 1-7); sin embargo, la literatura respalda que esta condición no invalida su uso en modelos de regresión logística y redes neuronales.
-
-El dataset producido en este capítulo constituye el insumo directo para el Capítulo 5, donde se desarrollarán los modelos de predicción de fatiga (R4) y predicción de riesgo de lesión (R5), así como el sistema integrado que orquesta ambos modelos en secuencia (R6).
-
----
-
-### 4.4 Dataset primario para el sistema predictivo: Runner Dataset (Löwdal et al., 2021)
-
-Con el propósito de superar la limitación de tamaño muestral del dataset PMData (16 atletas, 9 con lesiones), se adoptó como **dataset principal** para el entrenamiento y validación del sistema predictivo el **Runner Dataset** publicado por Löwdal et al. (2021), disponible públicamente en el repositorio asociado a su trabajo. A diferencia del PMData — que emplea sensores vestibles Fitbit Versa 2 y la plataforma PMSYS —, el Runner Dataset proviene de relojes GPS de running (Garmin/Polar) y cuestionarios subjetivos de entrenamiento diario, lo que lo hace más representativo del perfil de corredor recreacional con tecnología accesible.
-
-**Descripción del dataset.** El Runner Dataset comprende datos longitudinales de **74 corredores** seguidos durante períodos de entre 7 meses y 2 años, con **583 eventos de lesión documentados** y una prevalencia del 1.36% (583 eventos positivos de 42,766 observaciones totales). Los datos se presentan en formato tabular de 73 columnas mediante un esquema de *7-day window wide format*: cada fila representa el resumen de 7 días anteriores de entrenamiento y bienestar para un atleta en una fecha dada. Las 10 variables base disponibles son: `total km` (distancia total diaria), `km Z3-4` (km en zona umbral anaeróbico), `km Z5-T1-T2` (km en zona de alta intensidad/intervalos), `km sprinting` (km de sprint), `nr. sessions` (número de sesiones), `strength training` (sesión de fuerza, binaria), `hours alternative` (horas de entrenamiento cruzado), `perceived exertion`, `perceived recovery` y `perceived trainingSuccess`. Cada variable tiene 7 columnas representando los días D-7 a D-1 (sufijos vacío, `.1`, `.2`, ..., `.6`). La variable objetivo `injury` es ya **prospectiva** (lesión que ocurrirá en los próximos días), por lo que no requiere desplazamiento temporal adicional.
-
-**Proceso ETL aplicado.** Se implementaron los módulos `src/runner/extract.py`, `src/runner/transform.py` y `src/runner/dataset.py` para procesar el Runner Dataset. El proceso de ingeniería de features genera 18 variables derivadas, descritas en la Tabla 4.4.
+Proceso ETL aplicado. Se implementaron los módulos "src/runner/extract.py", "src/runner/transform.py" y "src/runner/dataset.py" para procesar el Runner Dataset. El proceso de ingeniería de features genera 18 variables derivadas, descritas en la Tabla 4.4.
 
 Tabla 4.4. Features derivadas del Runner Dataset.
 
@@ -174,9 +160,9 @@ Tabla 4.4. Features derivadas del Runner Dataset.
 | `recent_success` | Éxito del día D-1 | — |
 | `recent_km` | km del día D-1 | — |
 
-**Partición estratificada.** La partición se realizó por atleta con estratificación por presencia de lesión (semilla 42, proporciones 70/10/20): 51 atletas de entrenamiento (43 con lesiones, 29,574 filas), 7 de validación (6 con lesiones, 3,451 filas) y 16 de prueba (14 con lesiones, 9,741 filas). Esta estrategia garantiza que los tres conjuntos tengan proporciones similares de atletas con lesiones y previene la fuga de datos.
+Partición estratificada. La partición se realizó por atleta con estratificación por presencia de lesión (semilla 42, proporciones 70/10/20): 51 atletas de entrenamiento (43 con lesiones, 29,574 filas), 7 de validación (6 con lesiones, 3,451 filas) y 16 de prueba (14 con lesiones, 9,741 filas). Esta estrategia garantiza que los tres conjuntos tengan proporciones similares de atletas con lesiones y previene la fuga de datos.
 
-**Features del Modelo M1 (Regresor de Fatiga).** El sistema predictivo incorpora un modelo intermedio M1 que estima la percepción de recuperación del atleta (`perceived_recovery.6`, día D-1) a partir exclusivamente de features objetivas del GPS — sin acceso a variables subjetivas. La Tabla 4.5 describe las 10 features de entrada y la variable objetivo del modelo M1.
+Features del Modelo M1 (Regresor de Fatiga). El sistema predictivo incorpora un modelo intermedio M1 que estima la percepción de recuperación del atleta (`perceived_recovery.6`, día D-1) a partir exclusivamente de features objetivas del GPS — sin acceso a variables subjetivas. La Tabla 4.5 describe las 10 features de entrada y la variable objetivo del modelo M1.
 
 Tabla 4.5. Features del Modelo M1 — Regresor de Fatiga (10 entradas GPS → recuperación percibida).
 
@@ -192,11 +178,25 @@ Tabla 4.5. Features del Modelo M1 — Regresor de Fatiga (10 entradas GPS → re
 | `strength_days_7d` | Sesiones de entrenamiento de fuerza | 7 días |
 | `alt_hours_7d` | Horas de entrenamiento alternativo (cruzado) | 7 días |
 | `recent_km` | Km del día D-1 | 1 día |
-| **`recent_recovery`** | **Recuperación percibida D-1 (objetivo)** | **D-1** |
+| `recent_recovery` | Recuperación percibida D-1 (objetivo) | D-1 |
 
 La separación entre features objetivas (entrada) y subjetivas (objetivo) garantiza que el modelo M1 sea operable sin retroalimentación del atleta durante la inferencia, lo que lo hace aplicable en tiempo real con datos de reloj GPS únicamente.
 
-El dataset procesado se exporta a `src/outputs/runner_dataset_processed.csv` (42,766 filas × 21 columnas) y el modelo entrenado se guarda en `src/outputs/rf_runner_model.pkl`.
+El dataset procesado se exporta a "src/outputs/runner_dataset_processed.csv" (42,766 filas × 21 columnas) y el modelo entrenado se guarda en "src/outputs/rf_runner_model.pkl".
+
+## 4.4 Discusión
+
+Se llevaron a cabo tres resultados esperados para lograr el objetivo de construir un dataset multimodal para el análisis de fatiga y lesiones en corredores. Para el primer resultado (R1), se desarrolló un modelo de datos formalizado mediante un análisis exploratorio que definió 33 variables — 16 originales provenientes de las fuentes de datos y 17 características derivadas mediante ingeniería de features —, cada una respaldada por evidencia de la literatura científica en ciencias del deporte. Los análisis estadísticos realizados (normalidad, correlación, multicolinealidad y PCA) proporcionaron la fundamentación cuantitativa necesaria para las decisiones de selección de variables.
+
+Para el segundo resultado (R2), se implementó un pipeline ETL automatizado que traduce las decisiones del análisis exploratorio en un proceso reproducible, modular y verificable. El pipeline fue validado mediante un plan de pruebas de 37 tests unitarios, todos ejecutados exitosamente. Para el tercer resultado (R3), se generó y validó el dataset final mediante un informe de calidad y una comparación estadística con los cálculos exploratorios, confirmando la fidelidad del proceso automatizado.
+
+Tres decisiones de diseño merecen particular reflexión. En primer lugar, la normalización fue deliberadamente excluida del pipeline ETL. Esta decisión, aunque poco convencional en pipelines ETL tradicionales, responde a la necesidad de que cada modelo predictivo ajuste su propio normalizador exclusivamente sobre datos de entrenamiento, evitando la doble normalización y la fuga de datos. En segundo lugar, la selección de variables adoptó un criterio conservador de consenso triple (Spearman, Pearson y ANOVA F-test), lo cual reduce el riesgo de descartar variables potencialmente informativas a costa de retener un espacio de features ligeramente mayor. En tercer lugar, la partición de datos se realizó por participante en lugar de por observación individual, lo cual simula un escenario realista de despliegue en el que el modelo debe predecir para corredores no vistos durante el entrenamiento.
+
+El trabajo desarrollado presenta ciertas limitaciones que se reconocen explícitamente. El tamaño de la muestra de PMData (16 participantes) restringe la generalización de los resultados del sistema exploratorio y limita la potencia estadística de la validación por participante. El desbalance de clases (3% de prevalencia de lesión en PMData; 1.36% en el Runner Dataset) constituye un reto significativo para el entrenamiento de modelos predictivos, lo cual es abordado mediante técnicas de sobremuestreo en el Capítulo 5. Asimismo, las variables de bienestar subjetivo de PMData (fatiga, ánimo, dolor, estrés) no lograron normalidad tras la transformación Yeo-Johnson, lo cual se atribuye a su naturaleza ordinal (escala Likert 1-7); sin embargo, la literatura respalda que esta condición no invalida su uso en modelos de regresión logística y redes neuronales.
+
+Ambos datasets construidos en este capítulo — el dataset PMData curado (R3, Sección 4.2.3) y el Runner Dataset procesado (Sección 4.3) — constituyen los insumos directos para el Capítulo 5, donde se desarrollarán los modelos predictivos de fatiga (R4, M1) y riesgo de lesión (R5, M2), así como el sistema integrado que los orquesta en secuencia.
+
+---
 
 ## Anexos del Capítulo 4
 

@@ -68,3 +68,19 @@ Construir un dataset multimodal y procesado para el análisis de la fatiga y las
   * **Indicador objetivamente verificable:** El informe técnico es revisado y aprobado al 100% por el asesor de tesis y un experto en Machine Learning.
 
 ---
+
+## 📊 **Tabla 4 – Objetivo 4 (O4)**
+
+### 🔹 Resultados
+
+* **R10:** Un análisis de la importancia de características (feature importance) para la predicción de lesiones.
+
+  * **Medio de verificación:** Informe de análisis que presenta la visualización del ranking de importancia de características (e.g., gráfico SHAP).
+  * **Indicador objetivamente verificable:** El informe identifica y rankea las 10 variables con mayor impacto predictivo en el modelo de lesión.
+
+* **R11:** Una validación comparativa del rendimiento del modelo integrado frente a un modelo base.
+
+  * **Medio de verificación:** Informe de resultados comparativos que presenta las métricas de rendimiento de ambos modelos (integrado vs. base).
+  * **Indicador objetivamente verificable:** El modelo integrado demuestra una mejora de al menos el 5% en la métrica AUC-ROC en comparación con el modelo base.
+
+---
