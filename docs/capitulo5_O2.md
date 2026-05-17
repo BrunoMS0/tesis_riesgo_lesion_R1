@@ -24,7 +24,13 @@ Variable objetivo. La variable a predecir es el Índice Dinámico de Fatiga (DFI
 
 $$\text{DFI} = \frac{5 - \text{fatigue}}{4}$$
 
-donde "fatigue" corresponde a la puntuación en escala PMSYS (1–5), y el DFI resultante está acotado en el intervalo [0, 1], donde 0 representa mínima fatiga y 1 representa máxima fatiga. Esta formulación invierte la escala original — en PMSYS, 1 indica alta fatiga y 5 indica baja fatiga — y la normaliza a una escala continua interpretable. El DFI constituye la variable de salida del modelo R4 y, como se detallará en el resultado R5, actúa también como variable de entrada al modelo de predicción de lesión.
+donde "fatigue" corresponde a la puntuación en escala PMSYS (1–5), y el DFI resultante está acotado en el intervalo [0, 1], donde 0 representa mínima fatiga y 1 representa máxima fatiga. Esta formulación invierte la escala original — en PMSYS, 1 indica alta fatiga y 5 indica baja fatiga — y la normaliza a una escala continua interpretable.
+
+**Sobre la naturaleza subjetiva del DFI.** La puntuación de fatiga PMSYS es, por definición, una medida subjetiva: refleja la percepción que tiene el propio atleta sobre su estado de cansancio en ese día. Esta elección es deliberada y científicamente justificada. La fatiga fisiológica es un fenómeno multidimensional que integra simultáneamente el estrés metabólico, la fatiga neuromuscular, la carga inflamatoria y el estado del sistema nervioso autónomo; ningún sensor objetivo disponible en dispositivos de consumo masivo mide directamente este estado de forma integrada. En cambio, la percepción subjetiva del atleta actúa como un integrador natural de todos estos mecanismos: el corredor que reporta fatiga alta está, en efecto, capturando una señal que refleja su carga interna real de un modo que el acelerómetro o el monitor cardíaco no pueden replicar de forma aislada (Saw et al., 2016; Buchheit, 2014).
+
+La contribución central del modelo R4 reside precisamente en esta tensión: dado que en un sistema de monitoreo autónomo no siempre es posible requerir que el atleta reporte su fatiga diariamente, el modelo aprende a **predecir esa percepción subjetiva a partir de señales objetivas del sensor Fitbit** (frecuencia cardíaca, sueño, actividad, cargas acumuladas). Así, el DFI no reemplaza la subjetividad del atleta — la preserva como señal de entrenamiento — sino que permite estimarla cuando no está disponible, habilitando el sistema predictivo incluso en días sin autoinforme. Este diseño transforma una limitación (dependencia del reporte subjetivo) en una fortaleza: el sistema puede operar de forma completamente autónoma con sensores pasivos.
+
+El DFI constituye la variable de salida del modelo R4 y, como se detallará en el resultado R5, actúa también como variable de entrada al modelo de predicción de lesión.
 
 Arquitectura del modelo. El modelo sigue una arquitectura de tipo Encoder-Predictor compuesta por seis capas funcionales. La Tabla 5.1 describe la arquitectura completa.
 
@@ -119,7 +125,7 @@ Como medio de verificación de este resultado, el código fuente del modelo se e
 
 Para el tercer resultado alcanzado, se implementó un pipeline de integración que orquesta la ejecución secuencial del modelo de fatiga (R4) y el modelo de predicción de lesión (R5), materializando el sistema predictivo completo. El pipeline recibe un dataset de entrada en formato CSV, produce estimaciones de DFI mediante R4, transfiere estas estimaciones como feature a R5, y genera como salida un conjunto de predicciones integradas que incluyen tanto el índice de fatiga como la probabilidad diaria de lesión para cada corredor.
 
-Arquitectura del sistema de integración. El pipeline se compone de cuatro etapas ejecutadas secuencialmente, orquestadas por el módulo `src/integration/pipeline.py`. La Figura 5.1 ilustra el flujo de datos entre las etapas.
+Arquitectura del sistema de integración. El pipeline se compone de cuatro etapas ejecutadas secuencialmente, orquestadas por los scripts `run_runner_fatigue.py` y `run_runner.py` en la raíz del repositorio. La Figura 5.1 ilustra el flujo de datos entre las etapas.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -256,26 +262,75 @@ Código fuente completo del modelo de Deep Learning para la estimación del DFI,
 | Evaluación | evaluate.py | Métricas MSE/RMSE/MAE/R²/Pearson r, desglose por participante |
 | Pipeline | pipeline.py | Orquestador: Dataset → Train → Evaluate con reporte de etapas |
 
-### Anexo M: Documento técnico — Modelo de fatiga (R4)
+### Anexo M: Documento técnico — Modelo de estimación de fatiga (R4)
 
-Especificación técnica del modelo de Deep Learning, incluyendo arquitectura, hiperparámetros almacenados y descripción de la capa de atención temporal.
+#### M.1 Descripción del problema y justificación del enfoque
 
-> Fuente: Hiperparámetros del modelo de fatiga — `hyperparameters.json`
+El modelo R4 resuelve una tarea de **regresión secuencial**: dado un historial de 14 días de métricas fisiológicas objetivas de un corredor (captadas por sensores Fitbit), estimar el Índice Dinámico de Fatiga (DFI) del día siguiente. La variable objetivo es:
 
-| Parámetro | Valor |
-|-----------|-------|
-| Arquitectura | BiLSTM(64) → Dropout(0.3) → BiLSTM(32) → TemporalAttention → Dense(32, ReLU) → Dropout(0.2) → Sigmoid |
-| Regularización L2 | 1×10⁻⁴ (kernels LSTM y Dense) |
-| Ventana temporal | 14 días |
-| Features de entrada | 43 features objetivas Fitbit |
-| Variable objetivo | DFI = (5 − fatigue) / 4 ∈ [0, 1] |
-| Optimizador | Adam, LR=0.001 |
-| Función de pérdida | MSE |
-| Épocas máximas | 200 (con EarlyStopping patience=20) |
-| Batch size | 32 |
-| ReduceLROnPlateau | factor=0.5, patience=10, min_lr=1×10⁻⁶ |
-| Semilla | 42 |
-| Salida del modelo | best_weights.keras, training_log.csv |
+$$\text{DFI}_t = \frac{5 - \text{fatigue}_t}{4} \in [0, 1]$$
+
+donde `fatigue_t` es la puntuación PMSYS reportada el día *t* en escala ordinal 1–5 (1 = alta fatiga, 5 = baja fatiga). La transformación invierte la escala y normaliza al intervalo unitario para compatibilidad con la activación Sigmoid de la capa de salida.
+
+La elección de una arquitectura BiLSTM con atención temporal se justifica por tres características del problema: (1) las señales fisiológicas presentan dependencias temporales de largo alcance — la fatiga del día *t* depende de los patrones de carga de los días *t*−7 a *t*−14 —; (2) la bidireccionalidad permite al modelo considerar tanto el historial reciente como el contexto de recuperación de días anteriores dentro de la ventana; y (3) el mecanismo de atención proporciona interpretabilidad sobre qué días de la ventana de 14 contribuyen más a la estimación, lo cual es clínicamente relevante para identificar patrones de riesgo.
+
+#### M.2 Arquitectura detallada
+
+La arquitectura sigue el patrón *Encoder-Predictor* de seis bloques funcionales encadenados:
+
+**Bloque 1 — Entrada (Input):** Tensor de forma `(batch, 14, 43)`, donde 14 es la longitud de la secuencia en días y 43 es el número de features objetivas Fitbit (sin incluir variables PMSYS subjetivas, para garantizar operabilidad en inferencia sin acceso a reportes del atleta).
+
+**Bloque 2 — Primera BiLSTM (Bidirectional LSTM, 64 unidades):** Cada unidad LSTM bidireccional concatena el estado oculto de la dirección *forward* y *backward*, produciendo representaciones de 128 dimensiones por paso de tiempo. La regularización L2 con coeficiente λ = 1×10⁻⁴ se aplica a los pesos del kernel (*W*) para controlar el sobreajuste. Se utiliza `return_sequences=True` para pasar la secuencia completa al siguiente bloque.
+
+**Bloque 3 — Dropout (rate=0.3):** Desactiva aleatoriamente el 30% de las neuronas durante el entrenamiento, actuando como regularización estocástica que previene la co-adaptación de neuronas.
+
+**Bloque 4 — Segunda BiLSTM (32 unidades):** Extrae representaciones de mayor nivel de abstracción temporal. La reducción de 64 a 32 unidades crea un cuello de botella que fuerza al modelo a aprender representaciones comprimidas de los patrones de fatiga.
+
+**Bloque 5 — Capa de Atención Temporal (TemporalAttention):** Implementa un mecanismo de atención aditiva (Bahdanau et al., 2015) mediante la función de puntaje:
+
+$$e_t = \mathbf{v}^\top \tanh(\mathbf{W} \mathbf{h}_t + \mathbf{b})$$
+$$\alpha_t = \frac{\exp(e_t)}{\sum_{k=1}^{T} \exp(e_k)} \quad (\text{softmax})$$
+$$\mathbf{c} = \sum_{t=1}^{T} \alpha_t \mathbf{h}_t \quad (\text{vector de contexto})$$
+
+donde **h**_t es el estado oculto del día *t* producido por la segunda BiLSTM, **W** y **b** son parámetros aprendibles, y **v** es el vector de proyección. Los pesos α_t suman 1 (distribución de probabilidad sobre los 14 días) y pueden visualizarse como un mapa de calor de importancia temporal.
+
+**Bloque 6 — Capa Densa + Dropout + Salida:** Una capa densa de 32 neuronas con activación ReLU realiza la transformación no lineal del vector de contexto. El Dropout final (rate=0.2) añade regularización pre-salida. La capa de salida es una neurona densa con activación Sigmoid que produce el DFI estimado en [0, 1].
+
+#### M.3 Configuración de entrenamiento y justificación de hiperparámetros
+
+| Hiperparámetro | Valor configurado | Justificación |
+|----------------|------------------|---------------|
+| Optimizador | Adam | Convergencia adaptativa por parámetro; adecuado para datos fisiológicos con escalas heterogéneas |
+| Tasa de aprendizaje inicial | 0.001 | Valor empírico estándar para Adam (Kingma & Ba, 2014) |
+| Función de pérdida | MSE | Penaliza cuadráticamente errores grandes en la estimación del DFI continuo |
+| Métrica de monitoreo | MAE | Interpretable en la escala del DFI: MAE = 0.15 equivale a 1.5 puntos RPE |
+| Épocas máximas | 200 | Límite conservador; EarlyStopping evita el sobre-entrenamiento antes |
+| EarlyStopping patience | 20 épocas | Tolera oscilaciones de corto plazo en val_loss antes de detener el entrenamiento |
+| ReduceLROnPlateau | factor=0.5, patience=10 | Reduce la LR a la mitad en mesetas de 10 épocas para afinar los pesos |
+| LR mínima | 1×10⁻⁶ | Evita que la LR converja a cero antes de que el modelo termine de converger |
+| Batch size | 32 | Balance entre estabilidad del gradiente y velocidad de convergencia |
+| Semilla aleatoria | 42 | Reproducibilidad de resultados entre ejecuciones |
+
+#### M.4 Preprocesamiento de features de entrada
+
+Las 43 features objetivas se normalizan mediante `MinMaxScaler` ajustado exclusivamente sobre los participantes del conjunto de entrenamiento. La normalización escala cada feature al rango [0, 1] según la fórmula:
+
+$$x_{\text{norm}} = \frac{x - x_{\min}^{\text{train}}}{x_{\max}^{\text{train}} - x_{\min}^{\text{train}}}$$
+
+El scaler se ajusta (*fit*) en train y se aplica (*transform*) en validación y test, eliminando la posibilidad de fuga de información estadística de los conjuntos de evaluación hacia el proceso de entrenamiento.
+
+Las secuencias deslizantes se construyen por participante: la entrada X[i] corresponde a los días [t-14, t-1] y la etiqueta y[i] al DFI del día t. Esto produce 1,497 secuencias de entrenamiento, 267 de validación y 410 de prueba.
+
+#### M.5 Artefactos de salida del modelo
+
+| Artefacto | Ruta | Descripción |
+|-----------|------|-------------|
+| Pesos óptimos | `src/outputs/best_weights.keras` | Pesos del modelo en la época de menor val_loss |
+| Hiperparámetros | `src/outputs/hyperparameters.json` | Configuración completa del modelo en formato JSON |
+| Historial de entrenamiento | `src/outputs/training_log.csv` | Pérdida y MAE por época (train y validación) |
+| Métricas de evaluación | `src/outputs/fatigue_evaluation.csv` | MSE, RMSE, MAE, R², Pearson r (global y por participante) |
+| Scatter plot | `src/outputs/plots/scatter_dfi.png` | DFI predicho vs. real en el conjunto de prueba |
+| Mapa de atención | `src/outputs/plots/attention_heatmap.png` | Pesos α_t para las primeras secuencias del conjunto de prueba |
 
 ### Anexo N: Plan de pruebas — Modelo de fatiga (22 tests)
 
@@ -338,27 +393,82 @@ Código fuente completo del modelo de Machine Learning para la predicción de ri
 | Evaluación | evaluate.py | ROC-AUC, PR-AUC, F1, Precision, Recall, Balanced Acc., Brier |
 | Validación | validate.py | LOSO cross-validation, skip de folds vacíos |
 
-### Anexo P: Documento técnico — Modelo de predicción de lesión (R5)
+### Anexo P: Documento técnico — Modelo de clasificación de riesgo de lesión (R5)
 
-Especificación técnica del modelo de regresión logística, incluyendo preprocesamiento, augmentación, selección de hiperparámetros y protocolo de validación.
+#### P.1 Descripción del problema y justificación del enfoque
 
-> Fuente: Configuración del modelo de lesión — `src/injury/config.py`
+El modelo R5 resuelve una tarea de **clasificación binaria**: dado el perfil fisiológico y de entrenamiento del día *t* de un corredor (incluyendo el DFI estimado por R4), predecir si ese corredor sufrirá una lesión en los próximos días (variable `is_injured` ∈ {0, 1}).
 
-| Componente | Especificación |
-|------------|---------------|
-| Clasificador | LogisticRegression (scikit-learn) |
-| Penalización | L2 |
-| Solver | lbfgs |
-| Max iteraciones | 1,000 |
-| class_weight | balanced |
-| Grid de C | {0.01, 0.1, 1.0, 10.0} |
-| Métrica grid search | ROC-AUC (5-fold estratificado) |
-| Normalización | PowerTransformer (yeo_johnson) + z-score |
-| Augmentación | SMOTE, ratio=0.30, k_neighbors=5 |
-| Threshold | Maximización F1 sobre validation set |
-| Validación | LOSO (Leave-One-Subject-Out) |
-| Features de entrada | 39 (incluyendo dfi_predicted) |
-| Variable objetivo | is_injured ∈ {0, 1} |
+La elección de **Regresión Logística con regularización L2** como clasificador principal responde a tres consideraciones:
+
+1. **Tamaño reducido del dataset**: Con solo 16 participantes y 2,398 observaciones, modelos de mayor capacidad como Random Forest o redes neuronales tenderían al sobreajuste por la insuficiencia de datos de entrenamiento. La regresión logística regularizada es más robusta en regímenes de baja muestra.
+
+2. **Interpretabilidad clínica**: Los coeficientes del modelo logístico son directamente interpretables como log-odds: un coeficiente positivo β para la feature *x* implica que un incremento unitario (en la escala normalizada) en *x* multiplica el odds de lesión por e^β. Esta propiedad es esencial para que un fisioterapeuta pueda validar y confiar en las predicciones del modelo.
+
+3. **Datos desbalanceados**: Con una prevalencia de lesión del 3% (ratio 1:32), la regularización L2 con `class_weight="balanced"` proporciona un mecanismo explícito de control del sesgo hacia la clase mayoritaria, complementado con la augmentación SMOTE.
+
+#### P.2 Pipeline de preprocesamiento y augmentación
+
+El pipeline de preprocesamiento de R5 sigue el orden correcto para prevenir la fuga de datos:
+
+**Paso 1 — Corrección de sesgo de origen:** Si algún participante concentra más del triple de la mediana de eventos positivos del grupo, su contribución se limita al umbral (mediana × 3). En el dataset PMData, el participante p12 presentaba 44 de los 72 eventos de lesión (67.7%); el umbral de corte redujo sus positivos a 12, llevando la distribución de entrenamiento a una representación más equitativa entre participantes.
+
+**Paso 2 — Normalización Yeo-Johnson + z-score:** Se aplica `PowerTransformer(method='yeo-johnson')` de scikit-learn. La transformación Yeo-Johnson generaliza la transformación de Box-Cox al rango completo de reales:
+
+$$\psi(x; \lambda) = \begin{cases} \frac{(x+1)^\lambda - 1}{\lambda} & \text{si } \lambda \neq 0, x \geq 0 \\ \ln(x+1) & \text{si } \lambda = 0, x \geq 0 \\ \frac{-((-x+1)^{2-\lambda} - 1)}{2-\lambda} & \text{si } \lambda \neq 2, x < 0 \\ -\ln(-x+1) & \text{si } \lambda = 2, x < 0 \end{cases}$$
+
+Esta transformación reduce la asimetría de las distribuciones no normales (confirmadas por Shapiro-Wilk, sección 4.2.1), seguida de estandarización z-score que lleva todas las variables a media 0 y desviación estándar 1. El transformador se ajusta (*fit*) **solo** sobre los datos de entrenamiento de cada fold y se aplica (*transform*) sobre validación y test.
+
+**Paso 3 — Augmentación SMOTE:** Se aplica sobre el conjunto de entrenamiento después de la normalización. SMOTE genera muestras sintéticas de la clase minoritaria interpolando entre vecinos cercanos en el espacio de features:
+
+$$x_{\text{synth}} = x_i + \delta \cdot (x_{k} - x_i), \quad \delta \sim U[0, 1]$$
+
+donde *x_i* es una muestra real positiva y *x_k* es uno de sus *k* vecinos más cercanos (k=5) en el espacio normalizado. El ratio objetivo del 30% eleva la clase positiva del ~2.5% real al 30% en el conjunto aumentado (2,265 observaciones totales). Las muestras sintéticas reciben identificadores con prefijo `synth_*` para ser excluidas de los conjuntos de test durante la evaluación LOSO.
+
+#### P.3 Modelo de clasificación y selección de hiperparámetros
+
+El clasificador es `LogisticRegression` de scikit-learn con los siguientes parámetros base:
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| Penalización | L2 | Regularización ridge; penaliza coeficientes grandes sin eliminar features |
+| Solver | lbfgs | Optimizador quasi-Newton; adecuado para datasets de tamaño moderado |
+| max_iter | 1,000 | Garantiza convergencia en el espacio de 39 features |
+| class_weight | balanced | Pesa cada observación positiva inversamente proporcional a su prevalencia |
+
+El parámetro de regularización **C** (inverso de la fuerza de regularización) se selecciona mediante búsqueda en cuadrícula sobre {0.01, 0.1, 1.0, 10.0}, evaluada por validación cruzada estratificada de 5 folds con métrica ROC-AUC sobre el conjunto de entrenamiento. El valor óptimo C = 0.01 (mayor regularización) fue el seleccionado, lo que refleja la tendencia al sobreajuste cuando se relaja la penalización en datasets pequeños.
+
+#### P.4 Ajuste del umbral de decisión
+
+A diferencia del umbral por defecto de 0.50, se determina empíricamente el umbral p* que maximiza el F1-score sobre el conjunto de validación:
+
+$$p^* = \arg\max_{p \in [0,1]} \text{F1}(p) = \arg\max_p \frac{2 \cdot \text{Precision}(p) \cdot \text{Recall}(p)}{\text{Precision}(p) + \text{Recall}(p)}$$
+
+Este ajuste reconoce explícitamente que en la predicción de lesiones, el costo de un **falso negativo** (no alertar ante una lesión inminente) supera al de un **falso positivo** (alertar innecesariamente). El umbral óptimo encontrado fue p* = 0.4421, lo que incrementa la sensibilidad respecto al umbral por defecto.
+
+#### P.5 Protocolo de validación cruzada LOSO
+
+La validación Leave-One-Subject-Out (LOSO) simula el escenario de despliegue donde el modelo predice para corredores no vistos durante el entrenamiento. En cada fold *i* de los 16 posibles:
+
+1. Se retira el participante *i* como conjunto de prueba (datos reales únicamente).
+2. Se entrena el pipeline completo (corrección de sesgo → normalización → SMOTE → grid search → ajuste de umbral) sobre los datos de los 15 participantes restantes.
+3. Se evalúan las métricas ROC-AUC, PR-AUC y F1 sobre el participante *i*.
+4. Los folds donde el participante *i* no registra ninguna lesión (n_injuries = 0) se omiten automáticamente, ya que el ROC-AUC no está definido para una sola clase.
+
+#### P.6 Features de entrada (39 variables)
+
+Las 39 features de entrada incluyen las 33 variables del dataset curado (Capítulo 4) más la variable `dfi_predicted` generada por R4, más las 5 variables intermedias calculadas durante el preprocesamiento. La variable `dfi_predicted` se imputa con la mediana del participante (o la mediana global) para los primeros 13 días donde la ventana de 14 días no está disponible (*cold-start imputation*).
+
+#### P.7 Artefactos de salida del modelo
+
+| Artefacto | Ruta | Descripción |
+|-----------|------|-------------|
+| Modelo serializado | `src/outputs/logistic_injury.joblib` | LogisticRegression ajustado (scikit-learn joblib) |
+| Normalizador | `src/outputs/injury_normalizer.joblib` | PowerTransformer ajustado sobre datos de train |
+| Comparación de modelos | `src/outputs/model_comparison.csv` | Métricas LR vs. Baseline vs. LR_no_DFI |
+| Resultados LOSO | `src/outputs/loso_results.csv` | ROC-AUC, PR-AUC, F1 por fold LOSO |
+| Coeficientes | `src/outputs/coefficient_importance.csv` | Coeficientes del modelo logístico por feature |
+| Por participante | `src/outputs/per_participant_logisticregression.csv` | Detección de lesiones por participante de prueba |
 
 ### Anexo Q: Plan de pruebas — Modelo de predicción de lesión (41 tests)
 
@@ -452,7 +562,13 @@ Descripción del protocolo de validación cruzada Leave-One-Subject-Out y resume
 
 Script de integración y módulos de soporte alojados en un repositorio de control de versiones.
 
-> Enlace: [src/integration/ — Repositorio GitHub](#) *(insertar enlace al repositorio)*
+> Enlace: [20213707 Pipeline de orquestación M1→M2 (Runner Dataset)](https://github.com/BrunoMS0/tesis_riesgo_lesion_R1/tree/main)
+>
+> Scripts relevantes:
+> - `run_runner_fatigue.py` — Fase M1: entrenamiento y validación LOAO del regresor de fatiga
+> - `run_runner.py`         — Fase M2: entrenamiento y validación LOAO del clasificador de lesión
+> - `run_runner_ablation.py` — Estudio de ablación (con/sin M1)
+> - `run_comparison.py`     — Comparación final de configuraciones
 
 | Módulo | Archivo | Propósito |
 |--------|---------|-----------|
