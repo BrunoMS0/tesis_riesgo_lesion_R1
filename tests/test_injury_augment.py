@@ -1,5 +1,5 @@
 """
-test_injury_augment.py – Tests for R5 data augmentation (SMOTE + Copula).
+test_injury_augment.py – Tests for M2 data augmentation (SMOTE + Copula) — Runner Dataset.
 
 Validates:
 - SMOTE augmented data has more rows than original
@@ -43,7 +43,7 @@ def training_data():
     n = 100
     pids = ["p01"] * 50 + ["p02"] * 50
     X = pd.DataFrame({
-        "dfi_predicted": rng.uniform(0, 1, n),
+        "fatigue_score_predicted": rng.uniform(0, 1, n),
         "session_load": rng.uniform(100, 800, n),
         "acwr": rng.uniform(0.5, 2.0, n),
         "fatigue": rng.randint(1, 6, n).astype(float),

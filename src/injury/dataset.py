@@ -224,19 +224,20 @@ def load_and_merge(cfg: InjuryConfig) -> pd.DataFrame:
 
     # Merge DFI predictions from R4
     dfi = pd.read_csv(cfg.dfi_csv, parse_dates=["date"])
-    dfi = dfi[["participant_id", "date", "dfi_predicted"]].copy()
+    dfi_col = cfg.dfi_col
+    dfi = dfi[["participant_id", "date", dfi_col]].copy()
     logger.info("Loaded %d DFI predictions from %s", len(dfi), cfg.dfi_csv)
 
     df = df.merge(dfi, on=["participant_id", "date"], how="left")
 
     # Fill cold-start NaNs with per-participant median
-    n_missing = df["dfi_predicted"].isna().sum()
+    n_missing = df[dfi_col].isna().sum()
     if n_missing > 0:
-        medians = df.groupby("participant_id")["dfi_predicted"].transform("median")
-        df["dfi_predicted"] = df["dfi_predicted"].fillna(medians)
+        medians = df.groupby("participant_id")[dfi_col].transform("median")
+        df[dfi_col] = df[dfi_col].fillna(medians)
         # If an entire participant is missing, use global median
-        global_median = df["dfi_predicted"].median()
-        df["dfi_predicted"] = df["dfi_predicted"].fillna(global_median)
+        global_median = df[dfi_col].median()
+        df[dfi_col] = df[dfi_col].fillna(global_median)
         logger.info("Filled %d cold-start DFI values with participant/global median",
                      n_missing)
 

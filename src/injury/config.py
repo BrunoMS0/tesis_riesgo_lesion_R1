@@ -165,6 +165,7 @@ class InjuryConfig:
     # Paths
     input_csv: str = _DEFAULT_INPUT_CSV
     dfi_csv: str = _DEFAULT_DFI_CSV
+    dfi_col: str = "dfi_predicted"   # columna de predicción de fatiga en dfi_csv
     output_path: str = _DEFAULT_OUTPUT
 
     # Features

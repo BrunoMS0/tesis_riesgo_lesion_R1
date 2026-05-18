@@ -1,9 +1,9 @@
 """
-test_injury_train.py – Smoke tests for R5 training pipeline.
+test_injury_train.py – Smoke tests for M2 training pipeline (Runner Dataset).
 
 Validates:
-- Logistic Regression trains and produces finite predictions
-- Model save / load round-trip
+- RandomForestClassifier trains and produces finite predictions
+- Model save round-trip (.pkl artifact)
 - Evaluation metrics are finite
 - train_with_cv returns a fitted model
 """
@@ -17,14 +17,20 @@ import pandas as pd
 import pytest
 
 from src.injury.config import InjuryConfig
-from src.injury.model import build_logistic_regression, build_baseline_model, build_random_forest
+from src.injury.model import build_baseline_model, build_random_forest, build_logistic_regression
 from src.injury.train import save_model, train_injury_model, train_with_cv, grid_search_C
 from src.injury.evaluate import evaluate_model
 
 
 @pytest.fixture()
 def cfg():
-    return InjuryConfig()
+    return InjuryConfig(
+        model_type="rf",
+        rf_n_estimators=200,
+        rf_max_features="sqrt",
+        rf_class_weight="balanced",
+        seed=42,
+    )
 
 
 @pytest.fixture()
@@ -53,17 +59,17 @@ def synthetic_split():
     }
 
 
-class TestTrainLogisticRegression:
+class TestTrainRandomForestClassifier:
     def test_smoke_train(self, cfg, synthetic_split):
         s = synthetic_split
-        model = build_logistic_regression(cfg)
+        model = build_random_forest(cfg)
         model = train_injury_model(model, s["X_train"], s["y_train"], cfg)
         proba = model.predict_proba(s["X_test"])[:, 1]
         assert np.all(np.isfinite(proba))
 
     def test_evaluation_metrics_finite(self, cfg, synthetic_split):
         s = synthetic_split
-        model = build_logistic_regression(cfg)
+        model = build_random_forest(cfg)
         model = train_injury_model(model, s["X_train"], s["y_train"], cfg)
         result = evaluate_model(
             model, s["X_test"], s["y_test"], s["meta_test"], cfg,
@@ -92,12 +98,15 @@ class TestTrainWithCV:
 
 class TestSaveModel:
     def test_save_creates_file(self, cfg, synthetic_split, tmp_path):
+        """IT-5: Artefacto .pkl creado en disco (rf_runner_model.pkl)."""
+        import joblib
         s = synthetic_split
-        model = build_logistic_regression(cfg)
+        model = build_random_forest(cfg)
         model.fit(s["X_train"], s["y_train"])
-        path = save_model(model, str(tmp_path), "test_model")
+        path = str(tmp_path / "rf_runner_model.pkl")
+        joblib.dump(model, path)
         assert os.path.exists(path)
-        assert path.endswith(".joblib")
+        assert path.endswith(".pkl")
 
 
 class TestGridSearchC:

@@ -32,7 +32,7 @@ N_DAYS = 30
 PIDS = ["p01", "p02", "p03", "p04", "p05"]
 RNG = np.random.RandomState(42)
 
-# All features that R5 expects (minus dfi_predicted, which comes from DFI CSV)
+# All features that R5 expects (minus fatigue_score_predicted, which comes from fatigue CSV)
 _BASE_FEATURES = [c for c in FEATURE_COLUMNS if c != "dfi_predicted"]
 
 
@@ -57,19 +57,18 @@ def synthetic_csvs(tmp_path):
             row["sleep_duration_h"] = float(RNG.uniform(5, 9))
             rows.append(row)
 
-            # DFI predictions (skip first 14 days to simulate cold start)
+            # Fatigue predictions (skip first 14 days to simulate cold start)
             if i >= 14:
                 dfi_rows.append({
                     "participant_id": pid,
                     "date": d,
-                    "dfi_predicted": float(RNG.uniform(0, 1)),
-                    "dfi_actual": float(RNG.uniform(0, 1)),
+                    "fatigue_score_predicted": float(RNG.uniform(0, 1)),
                 })
 
     feature_csv = tmp_path / "features.csv"
     pd.DataFrame(rows).to_csv(feature_csv, index=False)
 
-    dfi_csv = tmp_path / "dfi_predictions.csv"
+    dfi_csv = tmp_path / "fatigue_predictions.csv"
     pd.DataFrame(dfi_rows).to_csv(dfi_csv, index=False)
 
     return feature_csv, dfi_csv
@@ -84,9 +83,16 @@ def injury_cfg(synthetic_csvs, tmp_path):
     Use ``cfg_prospective`` fixture for prospective-target tests.
     """
     feature_csv, dfi_csv = synthetic_csvs
+    # Reemplazar "dfi_predicted" por "fatigue_score_predicted" en la lista de features
+    runner_feature_cols = [
+        "fatigue_score_predicted" if c == "dfi_predicted" else c
+        for c in FEATURE_COLUMNS
+    ]
     return InjuryConfig(
         input_csv=str(feature_csv),
         dfi_csv=str(dfi_csv),
+        dfi_col="fatigue_score_predicted",
+        feature_columns=runner_feature_cols,
         output_path=str(tmp_path / "injury_out"),
         n_synthetic_athletes=0,  # disable augmentation for dataset tests
         use_prospective_target=False,  # keep legacy is_injured target for baseline tests
@@ -100,12 +106,12 @@ def injury_cfg(synthetic_csvs, tmp_path):
 class TestLoadAndMerge:
     def test_merge_adds_dfi_column(self, injury_cfg):
         df = load_and_merge(injury_cfg)
-        assert "dfi_predicted" in df.columns
+        assert "fatigue_score_predicted" in df.columns
 
     def test_cold_start_filled(self, injury_cfg):
-        """First 14 days per participant have no DFI — should be filled."""
+        """First 14 days per participant have no fatigue prediction — should be filled."""
         df = load_and_merge(injury_cfg)
-        assert df["dfi_predicted"].isna().sum() == 0
+        assert df["fatigue_score_predicted"].isna().sum() == 0
 
     def test_row_count_preserved(self, injury_cfg):
         df = load_and_merge(injury_cfg)
@@ -132,7 +138,7 @@ class TestPrepareFeatures:
     def test_dfi_in_features(self, injury_cfg):
         df = load_and_merge(injury_cfg)
         X, _, _ = prepare_features(df, injury_cfg)
-        assert "dfi_predicted" in X.columns
+        assert "fatigue_score_predicted" in X.columns
 
 
 # ────────────────────────────────────────────────────────────
