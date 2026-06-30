@@ -21,6 +21,7 @@ Rationale for Cond A (not full 18-feat M2):
 Outputs
 -------
   src/outputs/shap_feature_importance.csv        — top-10 ranking by mean |SHAP|
+  src/outputs/shap_values.csv                    — full SHAP matrix (n_samples × n_features + y_actual)
   src/outputs/plots/shap_beeswarm.png            — global importance + effect direction
   src/outputs/plots/shap_bar.png                 — top-10 mean |SHAP| bar chart
   src/outputs/plots/shap_dependence_{feat}.png   — dependence for top 3 features
@@ -48,6 +49,7 @@ import shap
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 SHAP_CSV_PATH = "src/outputs/shap_feature_importance.csv"
+SHAP_VALUES_CSV_PATH = "src/outputs/shap_values.csv"
 PLOTS_DIR = Path("src/outputs/plots")
 
 # M2 Cond A hyperparameters (confirmed immutable facts)
@@ -216,6 +218,16 @@ def _run(args: argparse.Namespace) -> None:
     logger.info("Feature ranking saved → %s", SHAP_CSV_PATH)
     logger.info("\nTop 10 features by mean |SHAP|:\n%s",
                 importance_df[["rank", "feature", "mean_abs_shap"]].to_string(index=False))
+
+    # Export full SHAP values matrix (one row per sample, one column per feature)
+    shap_cols = {f"shap_{f}": shap_pos[:, i] for i, f in enumerate(FATIGUE_FEATURE_COLUMNS)}
+    shap_values_df = pd.DataFrame({"y_actual": y_shap.values, **shap_cols})
+    shap_values_df.index.name = "observation_idx"
+    shap_values_df.to_csv(SHAP_VALUES_CSV_PATH)
+    logger.info(
+        "SHAP values matrix saved → %s  (shape: %d × %d)",
+        SHAP_VALUES_CSV_PATH, shap_values_df.shape[0], shap_values_df.shape[1],
+    )
 
     top_features = importance_df["feature"].tolist()
 
